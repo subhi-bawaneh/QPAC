@@ -43,6 +43,7 @@ public class MigrationTests : IClassFixture<PostgresFixture>
     [Fact]
     public async Task Migration_Applies_And_Seeder_Populates()
     {
+        SkipIfNoPostgres.RequireConnection(_fixture);
         await using var provider = BuildProvider();
         using var scope = provider.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DipDbContext>();
@@ -103,6 +104,7 @@ public class MigrationTests : IClassFixture<PostgresFixture>
     [Fact]
     public async Task Seeder_Is_Idempotent()
     {
+        SkipIfNoPostgres.RequireConnection(_fixture);
         await using var provider = BuildProvider();
         using var scope1 = provider.CreateScope();
         var db1 = scope1.ServiceProvider.GetRequiredService<DipDbContext>();
