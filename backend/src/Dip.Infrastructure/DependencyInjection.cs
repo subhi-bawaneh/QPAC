@@ -51,6 +51,13 @@ public static class DependencyInjection
 
         services.AddSingleton<ILocalFileStorage, Storage.LocalFileStorage>();
 
+        services.AddSingleton<IExcelReader, Excel.ClosedXmlReader>();
+
+        // Register importers as scoped so they can accept DipDbContext.
+        services.AddScoped<Importers.PicklistImporter>();
+        services.AddScoped<Importers.BaselineImporter>();
+        services.AddScoped<Importers.ListsImporter>();
+
         services.AddScoped<IdentitySeeder>();
 
         return services;
