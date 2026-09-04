@@ -59,6 +59,7 @@ public static class DependencyInjection
         services.AddScoped<Importers.ListsImporter>();
         services.AddScoped<Importers.TidpImporter>();
         services.AddScoped<Importers.MidpImporter>();
+        services.AddScoped<Importers.AconexHistoryImporter>();
 
         services.AddScoped<IdentitySeeder>();
 
