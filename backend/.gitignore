@@ -19,6 +19,9 @@ appsettings.Local.json
 appsettings.*.local.json
 secrets.json
 
+# Per-developer launch settings (contains local paths, ports)
+**/Properties/launchSettings.json
+
 # Local SQLite (if any dev testing)
 *.db
 *.db-journal
