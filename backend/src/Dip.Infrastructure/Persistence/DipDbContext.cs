@@ -10,14 +10,6 @@ namespace Dip.Infrastructure.Persistence;
 public class DipDbContext
     : IdentityDbContext<ApplicationUser, ApplicationRole, Guid>, IDipDbContext
 {
-    static DipDbContext()
-    {
-        // PLAN.md § 1: all timestamps are 'timestamp without time zone' (naive, matching Excel).
-        // Enable the legacy switch so DateTime.Kind = Utc/Local both round-trip.
-        // Decision documented in docs/decisions/001-datetime.md.
-        AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
-    }
-
     public DipDbContext(DbContextOptions<DipDbContext> options) : base(options) { }
 
     // Live entities

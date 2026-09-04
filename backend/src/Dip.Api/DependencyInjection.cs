@@ -103,8 +103,7 @@ public static class DependencyInjection
         services.AddScoped(typeof(IPipelineBehavior<,>), typeof(LoggingBehavior<,>));
         services.AddScoped(typeof(IPipelineBehavior<,>), typeof(AuthorizationBehavior<,>));
         services.AddScoped(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
-        // TransactionBehavior is only meaningful once IDipDbContext has an implementation.
-        // It will be enabled in Phase 1.2 by adding the SaveChanges-capable behavior registration.
+        services.AddScoped(typeof(IPipelineBehavior<,>), typeof(TransactionBehavior<,>));
 
         RegisterHandlersAndValidators(services);
         return services;

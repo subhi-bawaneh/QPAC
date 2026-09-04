@@ -30,6 +30,11 @@ public sealed class CurrentUser : ICurrentUser
 
     public string? UserName => User?.Identity?.Name;
 
+    public string? FullName => User?.FindFirst("full_name")?.Value;
+
+    public IReadOnlyCollection<string> Roles =>
+        User?.FindAll(ClaimTypes.Role).Select(c => c.Value).ToArray() ?? Array.Empty<string>();
+
     public IReadOnlyCollection<string> Permissions =>
         User?.FindAll("permission").Select(c => c.Value).ToArray() ?? Array.Empty<string>();
 

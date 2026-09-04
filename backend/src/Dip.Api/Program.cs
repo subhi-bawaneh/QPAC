@@ -1,10 +1,23 @@
 using Dip.Api;
 using Dip.Infrastructure;
+using Dip.Infrastructure.Persistence;
+using Dip.Infrastructure.Seeding;
+using Microsoft.EntityFrameworkCore;
 using Serilog;
 
-Log.Logger = new LoggerConfiguration()
-    .WriteTo.Console()
-    .CreateBootstrapLogger();
+// Bootstrap logger — set once per process. WebApplicationFactory reboots the
+// host per test class and Serilog's static logger throws "already frozen" on
+// a second CreateBootstrapLogger call, so we silently ignore that path.
+try
+{
+    Log.Logger = new LoggerConfiguration()
+        .WriteTo.Console()
+        .CreateBootstrapLogger();
+}
+catch (InvalidOperationException)
+{
+    // Logger already initialized in a prior test host — reuse it.
+}
 
 try
 {
@@ -20,6 +33,17 @@ try
     builder.Services.AddApi(builder.Configuration);
 
     var app = builder.Build();
+
+    // Auto-migrate + seed at startup unless explicitly disabled.
+    // Tests set `Startup:SkipMigration=true` to control their own lifecycle.
+    if (!app.Configuration.GetValue("Startup:SkipMigration", false))
+    {
+        using var scope = app.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DipDbContext>();
+        await db.Database.MigrateAsync();
+        var seeder = scope.ServiceProvider.GetRequiredService<IdentitySeeder>();
+        await seeder.SeedAsync();
+    }
 
     app.UseSerilogRequestLogging();
     app.UseExceptionHandler();
