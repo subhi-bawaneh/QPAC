@@ -1,0 +1,49 @@
+# Build & IDE
+bin/
+obj/
+.vs/
+.idea/
+*.swp
+*.swo
+*~
+.vscode/
+*.user
+
+# NuGet
+*.nupkg
+.nuget/
+
+# Node
+node_modules/
+dist/
+build/
+.env.local
+.env.*.local
+
+# Logs
+logs/
+*.log
+Serilog/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+.~lock.*
+
+# Secrets (environment-specific)
+appsettings.*.json
+!appsettings.json
+user-secrets.json
+
+# Database & migrations (local only)
+*.db
+*.sqlite
+*.sqlite3
+
+# Tests
+.coverage/
+TestResults/
+
+# IDE cache
+.idea/
