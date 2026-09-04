@@ -16,8 +16,6 @@ public class TidpImporterTests : IClassFixture<ImporterFixture>
 
     public TidpImporterTests(ImporterFixture fixture) => _fixture = fixture;
 
-    // Each test wipes the tables it touches so ordering doesn't matter and one
-    // xUnit-parallelised class can share the ImporterFixture without pollution.
     private static async Task ResetTablesAsync(DipDbContext db)
     {
         await db.DocumentDrafts.ExecuteDeleteAsync();
@@ -30,19 +28,25 @@ public class TidpImporterTests : IClassFixture<ImporterFixture>
         await db.Folders.ExecuteDeleteAsync();
     }
 
-    // PLAN.md § 9.3.2 target: TIDP-STL.xlsx -> Structural, first document
-    // QF01012-NES-C04518-SDW-STL-00-Z00000-0ZZ0004, leading zeros preserved.
+    // Consolidated Live-target test — verifies PLAN.md § 9.3.2 target (first
+    // document number, leading zeros, Structural discipline, Tidp row created)
+    // AND idempotency (second run inserts zero). Using a fresh service scope
+    // for each import call keeps EF's change-tracker from carrying state
+    // across the two imports, which was the source of an intermittent FK
+    // violation when the tests ran together.
     [Fact]
-    public async Task LiveImport_StructuralDiscipline_FirstDocNumberAndLeadingZeros()
+    public async Task LiveImport_ParsesStructuralAndIsIdempotent()
     {
         if (!_fixture.IsAvailable) return;
 
-        using var scope = _fixture.CreateScope();
-        var importer = scope.ServiceProvider.GetRequiredService<TidpImporter>();
-        var db = scope.ServiceProvider.GetRequiredService<DipDbContext>();
-        await ResetTablesAsync(db);
+        using (var scope = _fixture.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DipDbContext>();
+            await ResetTablesAsync(db);
+        }
 
-        var result = await importer.ImportAsync(
+        var firstScope = _fixture.CreateScope();
+        var first = await firstScope.ServiceProvider.GetRequiredService<TidpImporter>().ImportAsync(
             _fixture.QpacProjectId,
             SampleFiles.Path("TIDP-STL.xlsx"),
             DataTarget.Live,
@@ -50,47 +54,44 @@ public class TidpImporterTests : IClassFixture<ImporterFixture>
             importBatchId: null,
             importedBy: "test",
             CancellationToken.None);
+        firstScope.Dispose();
 
-        result.RowsRead.Should().BeGreaterThan(50, "TIDP-STL sample has hundreds of populated rows");
-        result.RowsInserted.Should().BeGreaterThan(50);
-        result.RowsSkipped.Should().Be(0);
+        first.RowsRead.Should().BeGreaterThan(50, "TIDP-STL sample has hundreds of populated rows");
+        first.RowsInserted.Should().BeGreaterThan(50);
+        first.RowsSkipped.Should().Be(0);
 
-        var first = await db.Documents
-            .SingleOrDefaultAsync(d => d.DocumentNumber == "QF01012-NES-C04518-SDW-STL-00-Z00000-0ZZ0004");
-        first.Should().NotBeNull("PLAN.md § 9.3.2 target must exist after Live import");
-        first!.CorporateDiscipline.Should().Be("Structural");
-        first.F06Zone.Should().Be("00");
-        first.F08CSequence.Should().Be("0004");
-        first.F05Discipline.Should().Be("STL");
-        first.F04DocType.Should().Be("SDW");
-        first.Title.Should().StartWith("BLADE 4");
+        // PLAN.md § 9.3.2 target: first document = QF01012-NES-C04518-SDW-STL-00-Z00000-0ZZ0004,
+        // Structural discipline, leading zeros preserved (Zone "00", Sequence "0004").
+        using (var assertScope = _fixture.CreateScope())
+        {
+            var db = assertScope.ServiceProvider.GetRequiredService<DipDbContext>();
+            var target = await db.Documents
+                .SingleOrDefaultAsync(d => d.DocumentNumber == "QF01012-NES-C04518-SDW-STL-00-Z00000-0ZZ0004");
+            target.Should().NotBeNull();
+            target!.CorporateDiscipline.Should().Be("Structural");
+            target.F06Zone.Should().Be("00");
+            target.F08CSequence.Should().Be("0004");
+            target.F05Discipline.Should().Be("STL");
+            target.F04DocType.Should().Be("SDW");
+            target.Title.Should().StartWith("BLADE 4");
 
-        var discipline = await db.Disciplines.SingleAsync(d => d.Id == first.DisciplineId);
-        discipline.CorporateName.Should().Be("Structural");
+            var discipline = await db.Disciplines.SingleAsync(d => d.Id == target.DisciplineId);
+            discipline.CorporateName.Should().Be("Structural");
 
-        var tidp = await db.Tidps.SingleAsync(t => t.ProjectId == _fixture.QpacProjectId
-                                                     && t.DisciplineId == first.DisciplineId);
-        tidp.RevisionNumber.Should().Be("00");
-    }
+            var tidp = await db.Tidps.SingleAsync(t => t.ProjectId == _fixture.QpacProjectId
+                                                         && t.DisciplineId == target.DisciplineId);
+            tidp.RevisionNumber.Should().Be("00");
+        }
 
-    [Fact]
-    public async Task LiveImport_IsIdempotent_ZeroInsertsOnSecondRun()
-    {
-        if (!_fixture.IsAvailable) return;
-
-        using var scope = _fixture.CreateScope();
-        var importer = scope.ServiceProvider.GetRequiredService<TidpImporter>();
-        var db = scope.ServiceProvider.GetRequiredService<DipDbContext>();
-        await ResetTablesAsync(db);
-
-        var first = await importer.ImportAsync(
+        // Idempotency: fresh scope for the second import so EF's change tracker
+        // starts empty; second run should upsert every existing document with
+        // zero inserts.
+        var secondScope = _fixture.CreateScope();
+        var second = await secondScope.ServiceProvider.GetRequiredService<TidpImporter>().ImportAsync(
             _fixture.QpacProjectId, SampleFiles.Path("TIDP-STL.xlsx"),
             DataTarget.Live, null, null, "test", CancellationToken.None);
-        first.RowsInserted.Should().BeGreaterThan(0);
+        secondScope.Dispose();
 
-        var second = await importer.ImportAsync(
-            _fixture.QpacProjectId, SampleFiles.Path("TIDP-STL.xlsx"),
-            DataTarget.Live, null, null, "test", CancellationToken.None);
         second.RowsInserted.Should().Be(0);
         second.RowsRead.Should().Be(first.RowsRead);
     }
