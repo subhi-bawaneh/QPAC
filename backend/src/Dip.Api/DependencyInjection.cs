@@ -17,7 +17,13 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddApi(this IServiceCollection services, IConfiguration configuration)
     {
-        services.AddControllers();
+        services.AddControllers()
+            .AddJsonOptions(options =>
+            {
+                // Serialize/deserialize enums as strings so clients see "Draft" / "Live"
+                // instead of 0 / 1. Also matches the JSON in integration tests and Swagger docs.
+                options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+            });
         services.AddEndpointsApiExplorer();
         services.AddHttpContextAccessor();
         services.AddExceptionHandler<ProblemDetailsExceptionHandler>();

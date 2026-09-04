@@ -1,4 +1,5 @@
 using Dip.Application.Abstractions;
+using Dip.Infrastructure.Drive;
 using Dip.Infrastructure.Identity;
 using Dip.Infrastructure.Persistence;
 using Dip.Infrastructure.Seeding;
@@ -44,6 +45,11 @@ public static class DependencyInjection
 
         services.Configure<JwtOptions>(configuration.GetSection(JwtOptions.SectionName));
         services.AddSingleton<IJwtTokenService, JwtTokenService>();
+
+        services.Configure<GoogleDriveOptions>(configuration.GetSection(GoogleDriveOptions.SectionName));
+        services.AddHttpClient<IDriveClient, ApiKeyDriveClient>();
+
+        services.AddSingleton<ILocalFileStorage, Storage.LocalFileStorage>();
 
         services.AddScoped<IdentitySeeder>();
 
