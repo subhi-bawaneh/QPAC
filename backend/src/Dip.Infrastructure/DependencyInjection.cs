@@ -57,6 +57,7 @@ public static class DependencyInjection
         services.AddScoped<Importers.PicklistImporter>();
         services.AddScoped<Importers.BaselineImporter>();
         services.AddScoped<Importers.ListsImporter>();
+        services.AddScoped<Importers.TidpImporter>();
 
         services.AddScoped<IdentitySeeder>();
 

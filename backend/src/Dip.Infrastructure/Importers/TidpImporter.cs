@@ -1,0 +1,638 @@
+using System.Globalization;
+using Dip.Application.Abstractions;
+using Dip.Domain.Entities;
+using Dip.Domain.Enums;
+using Dip.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
+
+namespace Dip.Infrastructure.Importers;
+
+// Reads a TIDP workbook (`TIDP_Sheet`), extracts the discipline from the
+// header block, then walks the DOCUMENT NUMBER table and upserts one Tidp
+// row + one Document row per data row + two DataExchange rows per document.
+//
+// Target=Live writes to Tidp/Document/DataExchange directly.
+// Target=Draft writes to TidpDraft/DocumentDraft/DataExchangeDraft and computes
+// DraftRowState.New | Modified | Unchanged vs the current Live values, so the
+// Promote diff (Phase 4.2) has everything it needs.
+//
+// Document numbering per PLAN.md § 5.1.1:
+//   F01-F02-F03-F04-F05-F06-F07-F08A F08B F08C (no separator between S,T,U)
+// Leading zeros preserved: Zone -> 2 chars, Sequence -> 4 chars.
+public sealed class TidpImporter
+{
+    private readonly DipDbContext _db;
+    private readonly IExcelReader _reader;
+
+    public TidpImporter(DipDbContext db, IExcelReader reader)
+    {
+        _db = db;
+        _reader = reader;
+    }
+
+    public async Task<ImportResult> ImportAsync(
+        Guid projectId,
+        string filePath,
+        DataTarget target,
+        Guid? folderFileId,
+        Guid? importBatchId,
+        string importedBy,
+        CancellationToken ct)
+    {
+        using var wb = _reader.Open(filePath);
+        if (!wb.TryGetSheet("TIDP_Sheet", out var sheet) || sheet is null)
+        {
+            return new ImportResult(0, 0, 0, 0, new[] { "No 'TIDP_Sheet' sheet in workbook" });
+        }
+
+        var header = ReadHeaderBlock(sheet);
+        var disciplineName = header.Discipline
+            ?? throw new InvalidOperationException("Cannot find DISCIPLINE in TIDP header");
+
+        var discipline = await ResolveDisciplineAsync(projectId, disciplineName, ct);
+        var headerRow = FindDocumentTableHeader(sheet);
+        var columns = MapDocumentColumns(sheet, headerRow);
+
+        return target == DataTarget.Draft
+            ? await ImportDraftAsync(sheet, headerRow, columns, projectId, discipline, header,
+                folderFileId, importBatchId, importedBy, ct)
+            : await ImportLiveAsync(sheet, headerRow, columns, projectId, discipline, header,
+                folderFileId, importedBy, ct);
+    }
+
+    // ---------------------------------------------------------------- Live
+
+    private async Task<ImportResult> ImportLiveAsync(
+        IExcelSheet sheet, int headerRow, DocumentColumnMap columns,
+        Guid projectId, Discipline discipline, TidpHeader header,
+        Guid? folderFileId, string importedBy, CancellationToken ct)
+    {
+        var tidp = await UpsertTidpAsync(projectId, discipline.Id, header, folderFileId, importedBy, ct);
+
+        var existing = await _db.Documents
+            .Where(d => d.ProjectId == projectId)
+            .Select(d => new { d.Id, d.DocumentNumber })
+            .ToListAsync(ct);
+        var existingByNumber = existing.ToDictionary(d => d.DocumentNumber, StringComparer.OrdinalIgnoreCase);
+
+        var read = 0;
+        var inserted = 0;
+        var updated = 0;
+        var skipped = 0;
+        var warnings = new List<string>();
+
+        for (var r = headerRow + 1; r <= sheet.RowCount; r++)
+        {
+            var parsed = ParseRow(sheet, r, columns, warnings);
+            if (parsed is null) continue;
+
+            read++;
+
+            if (existingByNumber.TryGetValue(parsed.DocumentNumber, out var existingRef))
+            {
+                var doc = await _db.Documents
+                    .Include(d => d.Exchanges)
+                    .SingleAsync(d => d.Id == existingRef.Id, ct);
+                ApplyToDocument(doc, parsed, tidp.Id, discipline.Id, folderFileId, importedBy, isNew: false);
+                updated++;
+            }
+            else
+            {
+                var doc = new Document();
+                ApplyToDocument(doc, parsed, tidp.Id, discipline.Id, folderFileId, importedBy, isNew: true);
+                doc.ProjectId = projectId;
+                _db.Documents.Add(doc);
+                inserted++;
+            }
+        }
+
+        await _db.SaveChangesAsync(ct);
+        return new ImportResult(read, inserted, updated, skipped, warnings);
+    }
+
+    private static void ApplyToDocument(
+        Document doc, ParsedRow parsed, Guid tidpId, Guid disciplineId, Guid? folderFileId,
+        string importedBy, bool isNew)
+    {
+        doc.TidpId = tidpId;
+        doc.DisciplineId = disciplineId;
+        doc.FolderFileId = folderFileId;
+        doc.DocumentNumber = parsed.DocumentNumber;
+        doc.Title = parsed.Title;
+        doc.ExtractedFromModel = parsed.ExtractedFromModel;
+        doc.ScopeArea = parsed.ScopeArea;
+        doc.AuthoringSoftware = parsed.AuthoringSoftware;
+        doc.ExchangeFormat = parsed.ExchangeFormat;
+        doc.Scale = parsed.Scale;
+        doc.DeliveryMilestone = parsed.DeliveryMilestone;
+        doc.PackageName = parsed.PackageName;
+        doc.ActivityId = parsed.ActivityId;
+        doc.ClassificationCode = parsed.ClassificationCode;
+        doc.F01Project = parsed.F01;
+        doc.F02Originator = parsed.F02;
+        doc.F03Contract = parsed.F03;
+        doc.F04DocType = parsed.F04;
+        doc.F05Discipline = parsed.F05;
+        doc.F06Zone = parsed.F06;
+        doc.F07Building = parsed.F07;
+        doc.F08ADrawingType = parsed.F08A;
+        doc.F08BLevel = parsed.F08B;
+        doc.F08CSequence = parsed.F08C;
+        doc.CorporateDiscipline = parsed.CorporateDiscipline;
+        // PLAN.md § 5.2 says BudgetWeight defaults to Exchange 01 duration (or 1).
+        doc.BudgetWeight = parsed.Exchange1?.DurationDays ?? 1m;
+
+        var now = DateTime.UtcNow;
+        if (isNew)
+        {
+            doc.CreatedAt = now;
+            doc.CreatedBy = importedBy;
+        }
+        doc.UpdatedAt = now;
+        doc.UpdatedBy = importedBy;
+
+        UpsertExchange(doc, 1, parsed.Exchange1);
+        UpsertExchange(doc, 2, parsed.Exchange2);
+    }
+
+    private static void UpsertExchange(Document doc, int number, ExchangeRow? row)
+    {
+        var existing = doc.Exchanges.FirstOrDefault(e => e.Number == number);
+        if (row is null)
+        {
+            if (existing is not null) doc.Exchanges.Remove(existing);
+            return;
+        }
+
+        if (existing is null)
+        {
+            doc.Exchanges.Add(new DataExchange
+            {
+                Number = number,
+                Author = row.Author,
+                Geometrical = row.Geometrical,
+                NonGeometrical = row.NonGeometrical,
+                DurationDays = (int?)row.DurationDays,
+                Predecessor = row.Predecessor,
+                ExchangeDate = row.ExchangeDate,
+            });
+        }
+        else
+        {
+            existing.Author = row.Author;
+            existing.Geometrical = row.Geometrical;
+            existing.NonGeometrical = row.NonGeometrical;
+            existing.DurationDays = (int?)row.DurationDays;
+            existing.Predecessor = row.Predecessor;
+            existing.ExchangeDate = row.ExchangeDate;
+        }
+    }
+
+    // --------------------------------------------------------------- Draft
+
+    private async Task<ImportResult> ImportDraftAsync(
+        IExcelSheet sheet, int headerRow, DocumentColumnMap columns,
+        Guid projectId, Discipline discipline, TidpHeader header,
+        Guid? folderFileId, Guid? importBatchId, string importedBy, CancellationToken ct)
+    {
+        if (folderFileId is null || importBatchId is null)
+        {
+            throw new InvalidOperationException("Draft imports require FolderFileId and ImportBatchId");
+        }
+
+        // Clear any prior draft from the same FolderFile so the run is deterministic.
+        await _db.DocumentDrafts
+            .Where(d => d.FolderFileId == folderFileId.Value)
+            .ExecuteDeleteAsync(ct);
+        await _db.TidpDrafts
+            .Where(d => d.FolderFileId == folderFileId.Value)
+            .ExecuteDeleteAsync(ct);
+
+        var tidpDraft = new TidpDraft
+        {
+            ProjectId = projectId,
+            DisciplineId = discipline.Id,
+            FolderFileId = folderFileId.Value,
+            ImportBatchId = importBatchId.Value,
+            DocumentReference = header.DocumentReference ?? string.Empty,
+            RevisionNumber = header.RevisionNumber ?? "00",
+            DateCreated = header.DateCreated,
+            DateLastUpdated = header.DateLastUpdated,
+            State = DraftRowState.New,
+            CreatedAt = DateTime.UtcNow,
+            CreatedBy = importedBy,
+            UpdatedAt = DateTime.UtcNow,
+            UpdatedBy = importedBy,
+        };
+        _db.TidpDrafts.Add(tidpDraft);
+
+        // Preload existing Live docs so we can compute Diff state.
+        var live = await _db.Documents
+            .Include(d => d.Exchanges)
+            .Where(d => d.ProjectId == projectId)
+            .ToListAsync(ct);
+        var liveByNumber = live.ToDictionary(d => d.DocumentNumber, StringComparer.OrdinalIgnoreCase);
+
+        // Track duplicates within the same file.
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        var read = 0;
+        var inserted = 0;
+        var updated = 0;
+        var skipped = 0;
+        var warnings = new List<string>();
+
+        for (var r = headerRow + 1; r <= sheet.RowCount; r++)
+        {
+            var parsed = ParseRow(sheet, r, columns, warnings);
+            if (parsed is null) continue;
+
+            read++;
+
+            var isDuplicate = !seen.Add(parsed.DocumentNumber);
+            if (isDuplicate)
+            {
+                warnings.Add($"Row {r}: duplicate DocumentNumber {parsed.DocumentNumber} within this file");
+            }
+
+            var (state, liveDocId) = DiffAgainstLive(parsed, liveByNumber);
+
+            var draft = new DocumentDraft
+            {
+                ProjectId = projectId,
+                TidpDraftId = tidpDraft.Id,
+                DisciplineId = discipline.Id,
+                FolderFileId = folderFileId.Value,
+                ImportBatchId = importBatchId.Value,
+                DocumentNumber = parsed.DocumentNumber,
+                Title = parsed.Title,
+                ExtractedFromModel = parsed.ExtractedFromModel,
+                ScopeArea = parsed.ScopeArea,
+                AuthoringSoftware = parsed.AuthoringSoftware,
+                ExchangeFormat = parsed.ExchangeFormat,
+                Scale = parsed.Scale,
+                DeliveryMilestone = parsed.DeliveryMilestone,
+                PackageName = parsed.PackageName,
+                ActivityId = parsed.ActivityId,
+                ClassificationCode = parsed.ClassificationCode,
+                F01Project = parsed.F01,
+                F02Originator = parsed.F02,
+                F03Contract = parsed.F03,
+                F04DocType = parsed.F04,
+                F05Discipline = parsed.F05,
+                F06Zone = parsed.F06,
+                F07Building = parsed.F07,
+                F08ADrawingType = parsed.F08A,
+                F08BLevel = parsed.F08B,
+                F08CSequence = parsed.F08C,
+                CorporateDiscipline = parsed.CorporateDiscipline,
+                BudgetWeight = parsed.Exchange1?.DurationDays ?? 1m,
+                State = state,
+                LiveDocumentId = liveDocId,
+                IsDuplicate = isDuplicate,
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = importedBy,
+                UpdatedAt = DateTime.UtcNow,
+                UpdatedBy = importedBy,
+            };
+
+            AppendDraftExchange(draft, 1, parsed.Exchange1);
+            AppendDraftExchange(draft, 2, parsed.Exchange2);
+            _db.DocumentDrafts.Add(draft);
+
+            if (state == DraftRowState.New) inserted++;
+            else if (state == DraftRowState.Modified) updated++;
+            else skipped++;
+        }
+
+        await _db.SaveChangesAsync(ct);
+        return new ImportResult(read, inserted, updated, skipped, warnings);
+    }
+
+    private static void AppendDraftExchange(DocumentDraft draft, int number, ExchangeRow? row)
+    {
+        if (row is null) return;
+        draft.Exchanges.Add(new DataExchangeDraft
+        {
+            Number = number,
+            Author = row.Author,
+            Geometrical = row.Geometrical,
+            NonGeometrical = row.NonGeometrical,
+            DurationDays = (int?)row.DurationDays,
+            Predecessor = row.Predecessor,
+            ExchangeDate = row.ExchangeDate,
+        });
+    }
+
+    private static (DraftRowState State, Guid? LiveDocId) DiffAgainstLive(
+        ParsedRow parsed, Dictionary<string, Document> liveByNumber)
+    {
+        if (!liveByNumber.TryGetValue(parsed.DocumentNumber, out var live))
+        {
+            return (DraftRowState.New, null);
+        }
+
+        // Compare the parsed row against Live field-by-field. Anything differing
+        // marks it Modified.
+        var changed =
+            live.Title != parsed.Title ||
+            live.PackageName != parsed.PackageName ||
+            live.ActivityId != parsed.ActivityId ||
+            live.CorporateDiscipline != parsed.CorporateDiscipline ||
+            live.DeliveryMilestone != parsed.DeliveryMilestone ||
+            live.Scale != parsed.Scale ||
+            live.AuthoringSoftware != parsed.AuthoringSoftware ||
+            live.ExchangeFormat != parsed.ExchangeFormat;
+
+        return (changed ? DraftRowState.Modified : DraftRowState.Unchanged, live.Id);
+    }
+
+    // ---------------------------------------------------------------- Tidp
+
+    private async Task<Tidp> UpsertTidpAsync(
+        Guid projectId, Guid disciplineId, TidpHeader header,
+        Guid? folderFileId, string importedBy, CancellationToken ct)
+    {
+        var existing = await _db.Tidps
+            .FirstOrDefaultAsync(t => t.ProjectId == projectId && t.DisciplineId == disciplineId, ct);
+
+        var now = DateTime.UtcNow;
+        if (existing is null)
+        {
+            var created = new Tidp
+            {
+                ProjectId = projectId,
+                DisciplineId = disciplineId,
+                FolderFileId = folderFileId,
+                DocumentReference = header.DocumentReference ?? string.Empty,
+                RevisionNumber = header.RevisionNumber ?? "00",
+                DateCreated = header.DateCreated,
+                DateLastUpdated = header.DateLastUpdated,
+                CreatedAt = now,
+                CreatedBy = importedBy,
+                UpdatedAt = now,
+                UpdatedBy = importedBy,
+            };
+            _db.Tidps.Add(created);
+            await _db.SaveChangesAsync(ct);
+            return created;
+        }
+
+        existing.FolderFileId = folderFileId ?? existing.FolderFileId;
+        existing.DocumentReference = header.DocumentReference ?? existing.DocumentReference;
+        existing.RevisionNumber = header.RevisionNumber ?? existing.RevisionNumber;
+        existing.DateCreated = header.DateCreated ?? existing.DateCreated;
+        existing.DateLastUpdated = header.DateLastUpdated ?? existing.DateLastUpdated;
+        existing.UpdatedAt = now;
+        existing.UpdatedBy = importedBy;
+        return existing;
+    }
+
+    // -------------------------------------------------------------- Header
+
+    private static TidpHeader ReadHeaderBlock(IExcelSheet sheet)
+    {
+        // Values sit in column B; labels in column A. We scan rows 1..14 and pick
+        // out the ones we care about by label text.
+        string? Get(string label)
+        {
+            var row = FindLabelRow(sheet, label);
+            if (row is null) return null;
+            return sheet.Row(row.Value).Cell(2).GetStringOrNull()?.Trim();
+        }
+
+        DateTime? GetDate(string label)
+        {
+            var row = FindLabelRow(sheet, label);
+            if (row is null) return null;
+            return sheet.Row(row.Value).Cell(2).GetDateTime();
+        }
+
+        return new TidpHeader(
+            Client: Get("CLIENT"),
+            Project: Get("PROJECT"),
+            Organisation: Get("ORGANISATION"),
+            Discipline: Get("DISCIPLINE"),
+            Approver: Get("APPROVER"),
+            DateCreated: GetDate("DATE CREATED"),
+            DateLastUpdated: GetDate("DATE LAST UPDATED"),
+            RevisionNumber: Get("REVISION NUMBER"),
+            DocumentReference: Get("DOCUMENT REFERENCE"));
+    }
+
+    private static int? FindLabelRow(IExcelSheet sheet, string label)
+    {
+        var last = Math.Min(sheet.RowCount, 14);
+        for (var r = 1; r <= last; r++)
+        {
+            var value = sheet.Row(r).Cell(1).GetStringOrNull()?.Trim();
+            if (string.Equals(value, label, StringComparison.OrdinalIgnoreCase))
+            {
+                return r;
+            }
+        }
+        return null;
+    }
+
+    private async Task<Discipline> ResolveDisciplineAsync(Guid projectId, string name, CancellationToken ct)
+    {
+        // First try by CorporateName (Structural, Electrical, Façade, …).
+        var match = await _db.Disciplines
+            .FirstOrDefaultAsync(d => d.ProjectId == projectId && d.CorporateName == name, ct);
+        if (match is not null) return match;
+
+        // Fall back to Code (STL, STR, ARC, …).
+        match = await _db.Disciplines
+            .FirstOrDefaultAsync(d => d.ProjectId == projectId && d.Code == name, ct);
+        if (match is not null) return match;
+
+        // Create a placeholder Discipline row so import doesn't fail when a
+        // workbook uses a discipline name the seeder didn't know about.
+        var created = new Discipline
+        {
+            ProjectId = projectId,
+            Code = name.Length > 20 ? name[..20] : name,
+            CorporateName = name,
+        };
+        _db.Disciplines.Add(created);
+        await _db.SaveChangesAsync(ct);
+        return created;
+    }
+
+    // ----------------------------------------------- Document row parsing
+
+    private static int FindDocumentTableHeader(IExcelSheet sheet)
+    {
+        // The row with "DOCUMENT NUMBER" in column A. Row 16 in TIDP-STL, row 15
+        // in MIDP. Search up to row 30 to be safe.
+        var last = Math.Min(sheet.RowCount, 30);
+        for (var r = 1; r <= last; r++)
+        {
+            var value = sheet.Row(r).Cell(1).GetStringOrNull()?.Trim();
+            if (string.Equals(value, "DOCUMENT NUMBER", StringComparison.OrdinalIgnoreCase))
+            {
+                return r;
+            }
+        }
+        throw new InvalidOperationException("Cannot find 'DOCUMENT NUMBER' header row");
+    }
+
+    private static DocumentColumnMap MapDocumentColumns(IExcelSheet sheet, int headerRow)
+    {
+        int Find(string label) => FindColumn(sheet, headerRow, label);
+        return new DocumentColumnMap(
+            Title: Find("DOCUMENT TITLE"),
+            ExtractedFromModel: Find("EXTRACTED FROM MODEL"),
+            ScopeArea: Find("SCOPE AREA"),
+            AuthoringSoftware: Find("AUTHORING SOFTWARE"),
+            ExchangeFormat: Find("EXCHANGE FORMAT"),
+            Scale: Find("SCALE"),
+            DeliveryMilestone: Find("DELIVERY MILESTONE"),
+            PackageName: Find("PACKAGE NAME"),
+            ActivityId: Find("ACTIVITY ID"),
+            ClassificationCode: Find("CLASSIFICATION CODE"),
+            F01: Find("PROJECT"),
+            F02: Find("ORIGINATOR"),
+            F03: Find("CONTRACT"),
+            F04: Find("DOCUMENT TYPE"),
+            F05: Find("DISCIPLINE"),
+            F06: Find("AREA/ZONE"),
+            F07: Find("VENUE/BUILDING"),
+            F08A: Find("DRAWING TYPE"),
+            F08B: Find("LEVEL"),
+            F08C: Find("SEQUENCE NUMBER"),
+            CorporateDiscipline: Find("CORPORATE DISCIPLINE"),
+            Ex1Author: Find("01-AUTHOR"),
+            Ex1Geometrical: Find("01-GEOMETRICAL"),
+            Ex1NonGeometrical: Find("01-NON GEOMETRICAL"),
+            Ex1Duration: Find("01-DURATION (DAYS)"),
+            Ex1Predecessor: Find("01-PREDECESSOR"),
+            Ex1ExchangeDate: Find("01-EXCHANGE DATE"),
+            Ex2Author: Find("02-AUTHOR"),
+            Ex2Geometrical: Find("02-GEOMETRICAL"),
+            Ex2NonGeometrical: Find("02-NON GEOMETRICAL"),
+            Ex2Duration: Find("02-DURATION (DAYS)"),
+            Ex2Predecessor: Find("02-PREDECESSOR"),
+            Ex2ExchangeDate: Find("02-EXCHANGE DATE"));
+    }
+
+    private static int FindColumn(IExcelSheet sheet, int headerRow, string label)
+    {
+        var row = sheet.Row(headerRow);
+        for (var c = 1; c <= sheet.ColumnCount; c++)
+        {
+            var value = row.Cell(c).GetStringOrNull()?.Trim();
+            if (string.Equals(value, label, StringComparison.OrdinalIgnoreCase)) return c;
+        }
+        return -1;
+    }
+
+    private static ParsedRow? ParseRow(IExcelSheet sheet, int r, DocumentColumnMap col, ICollection<string> warnings)
+    {
+        var row = sheet.Row(r);
+
+        var f01 = ReadRequired(row, col.F01);
+        var f02 = ReadRequired(row, col.F02);
+        var f03 = ReadRequired(row, col.F03);
+        var f04 = ReadRequired(row, col.F04);
+        var f05 = ReadRequired(row, col.F05);
+        var f06 = ReadRequired(row, col.F06).PadLeft(2, '0');
+        var f07 = ReadRequired(row, col.F07);
+        var f08a = ReadRequired(row, col.F08A);
+        var f08b = ReadRequired(row, col.F08B);
+        var f08c = ReadRequired(row, col.F08C).PadLeft(4, '0');
+
+        // Any required field blank -> skip the row (typical for template rows below
+        // the last populated document).
+        if (string.IsNullOrEmpty(f01) || string.IsNullOrEmpty(f04) || string.IsNullOrEmpty(f05))
+        {
+            return null;
+        }
+
+        var documentNumber = $"{f01}-{f02}-{f03}-{f04}-{f05}-{f06}-{f07}-{f08a}{f08b}{f08c}";
+
+        return new ParsedRow(
+            DocumentNumber: documentNumber,
+            Title: ReadRequired(row, col.Title),
+            ExtractedFromModel: ReadOptional(row, col.ExtractedFromModel),
+            ScopeArea: ReadOptional(row, col.ScopeArea),
+            AuthoringSoftware: ReadOptional(row, col.AuthoringSoftware),
+            ExchangeFormat: ReadOptional(row, col.ExchangeFormat),
+            Scale: ReadOptional(row, col.Scale),
+            DeliveryMilestone: ReadDate(row, col.DeliveryMilestone),
+            PackageName: ReadOptional(row, col.PackageName),
+            ActivityId: ReadOptional(row, col.ActivityId),
+            ClassificationCode: ReadOptional(row, col.ClassificationCode),
+            F01: f01, F02: f02, F03: f03, F04: f04, F05: f05, F06: f06,
+            F07: f07, F08A: f08a, F08B: f08b, F08C: f08c,
+            CorporateDiscipline: ReadRequired(row, col.CorporateDiscipline),
+            Exchange1: ReadExchange(row, col.Ex1Author, col.Ex1Geometrical, col.Ex1NonGeometrical,
+                col.Ex1Duration, col.Ex1Predecessor, col.Ex1ExchangeDate),
+            Exchange2: ReadExchange(row, col.Ex2Author, col.Ex2Geometrical, col.Ex2NonGeometrical,
+                col.Ex2Duration, col.Ex2Predecessor, col.Ex2ExchangeDate));
+    }
+
+    private static ExchangeRow? ReadExchange(
+        IExcelRow row, int author, int geometrical, int nonGeometrical,
+        int duration, int predecessor, int exchangeDate)
+    {
+        var authorValue = ReadOptional(row, author);
+        var geoValue = ReadOptional(row, geometrical);
+        var nonGeoValue = ReadOptional(row, nonGeometrical);
+        var durationValue = duration > 0 ? row.Cell(duration).GetDecimal() : null;
+        var predValue = ReadOptional(row, predecessor);
+        var dateValue = ReadDate(row, exchangeDate);
+        if (authorValue is null && geoValue is null && nonGeoValue is null
+            && durationValue is null && predValue is null && dateValue is null)
+        {
+            return null;
+        }
+        return new ExchangeRow(authorValue, geoValue, nonGeoValue, durationValue, predValue, dateValue);
+    }
+
+    private static string ReadRequired(IExcelRow row, int column) =>
+        column > 0 ? (row.Cell(column).GetStringOrNull()?.Trim() ?? string.Empty) : string.Empty;
+
+    private static string? ReadOptional(IExcelRow row, int column) =>
+        column > 0 ? row.Cell(column).GetStringOrNull()?.Trim() : null;
+
+    private static DateTime? ReadDate(IExcelRow row, int column) =>
+        column > 0 ? row.Cell(column).GetDateTime() : null;
+
+    // -------------------------------------------------- Value type helpers
+
+    private sealed record TidpHeader(
+        string? Client,
+        string? Project,
+        string? Organisation,
+        string? Discipline,
+        string? Approver,
+        DateTime? DateCreated,
+        DateTime? DateLastUpdated,
+        string? RevisionNumber,
+        string? DocumentReference);
+
+    private sealed record DocumentColumnMap(
+        int Title, int ExtractedFromModel, int ScopeArea, int AuthoringSoftware,
+        int ExchangeFormat, int Scale, int DeliveryMilestone, int PackageName,
+        int ActivityId, int ClassificationCode,
+        int F01, int F02, int F03, int F04, int F05, int F06, int F07,
+        int F08A, int F08B, int F08C, int CorporateDiscipline,
+        int Ex1Author, int Ex1Geometrical, int Ex1NonGeometrical,
+        int Ex1Duration, int Ex1Predecessor, int Ex1ExchangeDate,
+        int Ex2Author, int Ex2Geometrical, int Ex2NonGeometrical,
+        int Ex2Duration, int Ex2Predecessor, int Ex2ExchangeDate);
+
+    private sealed record ParsedRow(
+        string DocumentNumber, string Title,
+        string? ExtractedFromModel, string? ScopeArea, string? AuthoringSoftware,
+        string? ExchangeFormat, string? Scale, DateTime? DeliveryMilestone,
+        string? PackageName, string? ActivityId, string? ClassificationCode,
+        string F01, string F02, string F03, string F04, string F05, string F06, string F07,
+        string F08A, string F08B, string F08C, string CorporateDiscipline,
+        ExchangeRow? Exchange1, ExchangeRow? Exchange2);
+
+    private sealed record ExchangeRow(
+        string? Author, string? Geometrical, string? NonGeometrical,
+        decimal? DurationDays, string? Predecessor, DateTime? ExchangeDate);
+}

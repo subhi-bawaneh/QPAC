@@ -20,7 +20,7 @@ internal sealed class TidpDraftConfiguration : IEntityTypeConfiguration<TidpDraf
         b.Property(x => x.UpdatedAt).HasColumnType("timestamp without time zone");
         b.Property(x => x.CreatedBy).HasMaxLength(100);
         b.Property(x => x.UpdatedBy).HasMaxLength(100);
-        b.Property(x => x.RowVersion).IsRowVersion();
+        b.Property(x => x.RowVersion).IsConcurrencyToken();
         b.HasIndex(x => new { x.ProjectId, x.FolderFileId });
         b.HasIndex(x => x.ImportBatchId);
     }
@@ -61,7 +61,7 @@ internal sealed class DocumentDraftConfiguration : IEntityTypeConfiguration<Docu
         b.Property(x => x.UpdatedAt).HasColumnType("timestamp without time zone");
         b.Property(x => x.CreatedBy).HasMaxLength(100);
         b.Property(x => x.UpdatedBy).HasMaxLength(100);
-        b.Property(x => x.RowVersion).IsRowVersion();
+        b.Property(x => x.RowVersion).IsConcurrencyToken();
         b.HasIndex(x => new { x.ProjectId, x.FolderFileId, x.DocumentNumber });
         b.HasIndex(x => x.ImportBatchId);
         b.HasIndex(x => x.LiveDocumentId);

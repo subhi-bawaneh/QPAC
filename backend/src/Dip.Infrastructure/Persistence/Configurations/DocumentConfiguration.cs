@@ -19,7 +19,7 @@ internal sealed class TidpConfiguration : IEntityTypeConfiguration<Tidp>
         b.Property(x => x.UpdatedAt).HasColumnType("timestamp without time zone");
         b.Property(x => x.CreatedBy).HasMaxLength(100);
         b.Property(x => x.UpdatedBy).HasMaxLength(100);
-        b.Property(x => x.RowVersion).IsRowVersion();
+        b.Property(x => x.RowVersion).IsConcurrencyToken();
         b.HasIndex(x => new { x.ProjectId, x.DisciplineId });
         b.HasOne(x => x.Project).WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
         b.HasOne(x => x.Discipline).WithMany().HasForeignKey(x => x.DisciplineId).OnDelete(DeleteBehavior.Restrict);
@@ -63,7 +63,7 @@ internal sealed class DocumentConfiguration : IEntityTypeConfiguration<Document>
         b.Property(x => x.UpdatedAt).HasColumnType("timestamp without time zone");
         b.Property(x => x.CreatedBy).HasMaxLength(100);
         b.Property(x => x.UpdatedBy).HasMaxLength(100);
-        b.Property(x => x.RowVersion).IsRowVersion();
+        b.Property(x => x.RowVersion).IsConcurrencyToken();
 
         b.HasIndex(x => new { x.ProjectId, x.DocumentNumber }).IsUnique();
         b.HasIndex(x => new { x.ProjectId, x.CorporateDiscipline });
