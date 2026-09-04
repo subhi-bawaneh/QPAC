@@ -1,0 +1,24 @@
+bin/
+obj/
+out/
+publish/
+*.user
+*.suo
+.vs/
+.vscode/
+.idea/
+TestResults/
+coverage/
+*.trx
+*.coverage
+*.log
+
+# Local secrets — never commit
+appsettings.Development.json
+appsettings.Local.json
+appsettings.*.local.json
+secrets.json
+
+# Local SQLite (if any dev testing)
+*.db
+*.db-journal
