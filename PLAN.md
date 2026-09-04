@@ -258,10 +258,10 @@ DocumentNumber = $"{F01}-{F02}-{F03}-{F04}-{F05}-{F06}-{F07}-{F08A}{F08B}{F08C}"
 
 | الشيت | الاستخدام |
 |---|---|
-| `MIDP` | نفس أعمدة TIDP بالضبط (A–AH) لكن لكل التخصصات، ~10,598 وثيقة. الحقل A قيمة لا معادلة. صف العناوين = الصف 15 |
-| `Aconex History` | تصدير Aconex الخام + أعمدة مساعدة (انظر 5.1.3) |
-| `Aconex Latest` | نفس البنية، آخر نسخة فقط لكل وثيقة |
-| `LISTS` | تحويل DC Status → Status (جدول قديم؛ **المرجع المعتمد هو شيت `Lists` في Tracker**) |
+| `MIDP` | نفس أعمدة TIDP بالضبط (A–AH) لكن لكل التخصصات، **15,885 وثيقة (Tracker يفلترها إلى 15,883)**. الحقل A قيمة لا معادلة. صف العناوين = الصف 15. **ملاحظة**: بلوك الرأس (rows 3–10) لا يحتوي DISCIPLINE، وAPPROVER في الصف 6 (مختلف عن TIDP). |
+| `Aconex History` | تصدير Aconex الخام (**25,246 صفاً**) + أعمدة مساعدة (انظر 5.1.3). صف العناوين = **الصف 11**، Document No في العمود D. |
+| `Aconex Latest` | نفس البنية، **5,752 صفاً** (Latest + Terminated). |
+| `LISTS` | تحويل DC Status → Status (جدول **قديم**؛ **المرجع المعتمد هو شيت `Lists` في Tracker**). |
 
 #### 5.1.3 Aconex History (في MIDP وفي Tracker باسم `SHD_History`)
 
@@ -391,25 +391,36 @@ public class DocumentSnapshot {                  // ناتج المحرك — ي
 public class AuditLog { Guid Id; Guid ProjectId; string EntityName; Guid EntityId; string Action; string? Field; string? OldValue; string? NewValue; string UserId; DateTime At; }
 ```
 
-#### 5.3 جدول تحويل الحالة (يُزرع تلقائياً — Seed — من `Tracker.xlsx` شيت `Lists`)
+#### 5.3 جدول تحويل الحالة (يُزرع تلقائياً — Seed)
 
-| Aconex Status | Unified |
-|---|---|
-| A - Approved | Approved |
-| B - Approved with Comments | Approved |
-| C - Revise and Resubmit | Rejected |
-| D - Rejected | Rejected |
-| E - Review Not Required | Approved |
-| Issued For Approval | UnderReview |
-| Issued for information | Approved |
-| For Review | UnderReview |
-| No Longer in Use | Withdrawn |
-| Under Review | UnderReview |
-| QA Rejected | Rejected |
-| Terminated | Withdrawn |
-| QA Checked | UnderReview |
+المصدر النهائي = `docs/excel-analysis.md § 6b` (يُدمج `Tracker.xlsx!Lists` + قيم Aconex الفعلية + `MIDP.xlsx!LISTS` القديم):
 
-المطابقة **غير حساسة لحالة الأحرف** مع Trim. حالة غير معروفة → `null` + تحذير في السجل.
+| Aconex / Source Status | Unified | ملاحظة |
+|---|---|---|
+| A - Approved | Approved | |
+| B - Approved with Comments | Approved | **بصيغة الجمع** — Aconex الحديث |
+| B - Approved with Comment | Approved | بصيغة المفرد — `Tracker!Lists` القديم |
+| C - Revise and Resubmit | Rejected | |
+| D - Rejected | Rejected | |
+| E - Review Not Required | Approved | |
+| Issued For Approval | UnderReview | |
+| Issued for Action | UnderReview | مُشاهَد في البيانات، غير موجود في Lists — أضِفه |
+| Issued for information | Approved | |
+| For Review | UnderReview | |
+| No Longer In Use | Withdrawn | **بحرف I كبير** — Aconex الفعلي |
+| No Longer in Use | Withdrawn | defensive |
+| Under Review | UnderReview | |
+| QA Rejected | Rejected | |
+| QA Checked | UnderReview | |
+| Terminated | Withdrawn | من `Review Status` فقط — يُستخدم كـ override |
+| Open | UnderReview | مُشاهَد — أضِف |
+| Responded | UnderReview | مُشاهَد — أضِف |
+| Submitted to Site | UnderReview | من `MIDP.xlsx!LISTS` القديم |
+| Site Rejected | Rejected | قديم |
+| Submitted to Client | UnderReview | قديم |
+| For Information | Approved | قديم |
+
+**قاعدة المطابقة**: case-insensitive + Trim + دمج المسافات الداخلية إلى مسافة واحدة قبل المقارنة. حالة غير معروفة → `null` + تحذير في `ImportBatch.Log`.
 
 ---
 
@@ -448,6 +459,12 @@ else (WorkingPlan):
 #### 5.4.2 Corporate Summary
 
 `ReportDate = project.ReportDate ?? Today`. الأسابيع تنتهي **الأحد 23:59:59** (المعادلة تدوّر لآخر يوم في الأسبوع؛ تحقق من عيّنة: الأسبوع 2 = 2025-11-02 → 2025-11-09).
+
+**ملاحظة مهمة**: شيت `Corporate Summary` في Tracker يجمع بـ **المجموعتين معاً**:
+1. **Disciplines** (9): Architectural, Electrical, Façade, Fire & Life Safety, Infrastructure, Interior Design, Landscape, Mechanical, Structural — من `Document.CorporateDiscipline`.
+2. **Authors** (13): AFCO, ALUTEC, DOKA, FallProtec, JINGGONG, NAP PMO, Nesma & Partners, Nesma PMO, Provisional Sum, RAWABI, Sana Al-Jazerah, Subcontractor - Unassigned, TKE — من `Document.Exchanges[0].Author` (المرحلة الأولى فقط).
+
+المحرك يعيد نفس البنية لكل تصنيف (Discipline أو Author). الواجهة تعرضهما في شاشتين أو تبويبين.
 
 ```
 StartWeek = WeekEnd(Min(PlannedStart, ActualStart, 2025-11-04))
@@ -600,7 +617,7 @@ frontend/
 ### المرحلة 3 — الاستيراد
 **3.1**: Baseline + Picklists + Lists importers + اختبارات (`QP.M.GN.GEN.GEN.1400` Submittal ينتهي 2025-10-30).
 **3.2**: TidpImporter (Live و Draft) + اختبار `samples/TIDP-STL.xlsx`: Structural، أول رقم `QF01012-NES-C04518-SDW-STL-00-Z00000-0ZZ0004`، الأصفار محفوظة، وفي وضع Draft كل الصفوف State=New على قاعدة فارغة.
-**3.3**: MidpImporter + اختبار: عدد الوثائق = عدد صفوف الشيت (10,598)، وتعليم المكررات `IsDuplicate`.
+**3.3**: MidpImporter + اختبار: عدد الوثائق = عدد صفوف الشيت (**15,885** — راجع `docs/excel-analysis.md`)، وتعليم المكررات `IsDuplicate`.
 **3.4**: AconexHistoryImporter + اختبارات النرمَلة (`QF01012- NES- C04518- SDW- STR- 00- BLAD05- 2FL0101-PDF` → بدون مسافات وبدون `-PDF`؛ تقرير BSB → `XXX`)، وعينة 100 صف تطابق IsTerminated/IsLatest/InMidp المخزنة في `Tracker.xlsx`.
 **3.5**: Features/Imports المجزّأ (StartImport/RunImportStep/GetImportStatus) + اختبار تكامل يستورد MIDP كاملاً عبر الخطوات.
 
@@ -610,7 +627,18 @@ frontend/
 
 ### المرحلة 5 — المحرك
 **5.1**: TrackerEngine + اختبار 200 وثيقة عشوائية ضد شيت Tracker (فرق صفر، التواريخ < 1 ثانية).
-**5.2**: CorporateSummaryEngine + اختبار (ReportDate 2026-08-30): Electrical 2998/858/624/46، Rejected 188، TotalRevisions 1054، Quality ≈ 0.619؛ Façade 1009/98/63؛ Fire & LS 751/264/105/25؛ Infrastructure 346/80/62/3؛ Mechanical 1513/527/130/99؛ Structural Planned% 0.645 Completed% 0.594؛ الأسبوع 2 = 2025-11-02→2025-11-09؛ الأسبوع 5 Planned 12 Submitted 65.
+**5.2**: CorporateSummaryEngine + اختبار (ReportDate 2026-08-30، القيم موثّقة في `docs/excel-analysis.md § 4.4`):
+- **Electrical** Total/Planned/Submitted/Approved = 2998/252/858/624 ؛ Rejected 188 ؛ UnderReview 46 ؛ TotalRevisions 1054 ؛ Quality ≈ 0.6190 ؛ Planned% 0.0833 ؛ Completed% 0.2591
+- **Façade** 1009/300/98/63 ؛ Quality 0.3481 ؛ Planned% 0.2727 ؛ Completed% 0.0856
+- **Fire & LS** 751/55/264/105 ؛ UnderReview 25 ؛ Quality 0.3251
+- **Infrastructure** 346/48/80/62 ؛ Planned% 0.1387
+- **Mechanical** 1513/293/527/130 ؛ UnderReview 99 ؛ Quality 0.2218
+- **Structural** 5277/3412/3334/2628 ؛ Planned% 0.6445 ؛ Completed% 0.5939
+- **Architectural** 1955/133/370/222 ؛ Quality 0.3881
+- **Interior Design**, **Landscape**: كل الأرقام 0 (بدون Baseline / Aconex) — التغطية = 0
+- الإجماليات الكلية Total row 5: 15883 / 4493 / 5531 / 3834 ؛ Rejected 1056 ؛ UnderReview 641 ؛ Withdrawn 0 ؛ TotalRevisions 8086 ؛ Quality 0.5150
+- التوقيت: Start Week 2025-11-02 23:59:59 ؛ End Week 2028-10-08 23:59:59 ؛ الأسبوع 1 (2025-10-26→2025-11-02) Planned 11 Submitted 0 ؛ الأسبوع 5 (2025-11-23→2025-11-30) Planned 12 Submitted 65 ؛ الأسبوع 7 (2025-12-07→2025-12-14) Planned 307 Submitted 112 Approved 4
+- **Authors** (13 صفاً): AFCO 40/32/24/24، JINGGONG 1283/1219/968/453، Nesma & Partners 10114/2826/4010/3050 (تحقق كلها)
 **5.3**: BaselineSummaryEngine + اختبار (`QP.C.PS.GEN.GEN.1810` Unused؛ `…1850` Total 100 Pending).
 **5.4**: ControlFindingsEngine + اختبار (العناصر المذكورة في 5.4 + الأعداد تطابق الشيت).
 **5.5**: EvmEngine + اختبار (بوزن 1: Structural SPI ≈ 0.92، Electrical ≈ 3.1).

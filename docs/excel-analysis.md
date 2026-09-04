@@ -1,11 +1,27 @@
 # Excel Analysis — Sample Workbooks Structure & Rules
 
-**Last Updated:** 2026-09-04  
+**Last Updated:** 2026-09-04 (revised after reading actual `samples/*.xlsx` with openpyxl)  
 **Status:** Phase 0.1 — Documentation of actual Excel structure vs. PLAN.md
 
 This document describes the exact structure, formulas, and computed fields in each sample workbook (`samples/TIDP-STL.xlsx`, `samples/MIDP.xlsx`, `samples/Tracker.xlsx`, and supporting sheets). It serves as the specification bridge between Excel and the DIP system.
 
 **Golden Rule**: Every computed value in this project must match the cached values in these Excel files to within acceptable precision (dates < 1 second, numbers < 0.0001 relative error).
+
+## ⚠ Verified Totals & Structure (from actual files)
+
+| Metric | Value | Source |
+|---|---|---|
+| MIDP total documents | **15,885** (Tracker filters to 15,883) | `MIDP.xlsx!MIDP` row count |
+| Aconex History revisions | **25,246** | `MIDP.xlsx!Aconex History` |
+| Aconex Latest revisions | **5,752** | `MIDP.xlsx!Aconex Latest` |
+| Baseline activities | **1,375** | `Tracker.xlsx!Baseline` |
+| Distinct disciplines | **9** — Architectural, Electrical, Façade, Fire & Life Safety, Infrastructure, Interior Design, Landscape, Mechanical, Structural | Corporate Summary rows 8–16 |
+| Distinct Authors | **13** — AFCO, ALUTEC, DOKA, FallProtec, JINGGONG, NAP PMO, Nesma & Partners, Nesma PMO, Provisional Sum, RAWABI, Sana Al-Jazerah, Subcontractor - Unassigned, TKE | Corporate Summary rows 18+ |
+| Report Date (sample) | 2026-08-30 (Sunday) | Corporate Summary C4 |
+| Start Week (sample) | 2025-11-02 23:59:59 | Corporate Summary G4 |
+| End Week (sample) | 2028-10-08 23:59:59 | Corporate Summary G5 |
+| Weekly boundary | Week ends **Sunday 23:59:59** | verified: 2025-11-02 → 2025-11-09 |
+| PV/EV weights | 0, 0.6, 0.9, 1.0 (Pending, Sub1, Sub2, Approved) | Corporate Summary row 6 |
 
 ---
 
@@ -13,12 +29,12 @@ This document describes the exact structure, formulas, and computed fields in ea
 
 | File | Size | Purpose | Source |
 |---|---|---|---|
-| `TIDP-STL.xlsx` | 340 KB | One discipline TIDP (Structural) | Nesma & Partners sample |
+| `TIDP-STL.xlsx` | 340 KB | One discipline TIDP (Structural — 1,298 rows, but many blank) | Nesma & Partners sample |
 | `TIDP-STL-AFCO.xlsx` | 145 KB | Additional TIDP variant for testing | Nesma & Partners |
-| `MIDP.xlsx` | 8.3 MB | Consolidated MIDP (all disciplines, ~10,598 docs) | TIDP consolidation |
-| `Baseline.xlsx` | 157 KB | Baseline schedule activities (WBS breakdown) | Project 6 export |
+| `MIDP.xlsx` | 8.3 MB | Consolidated MIDP: 15,885 docs + Aconex History (25,246) + Aconex Latest (5,752) + LISTS | TIDP consolidation |
+| `Baseline.xlsx` | 157 KB | Baseline schedule activities (WBS breakdown, ~1,375 activities) | P6 export |
 | `PickLists.xlsx` | 50 KB | Numbering schemes (Discipline, Zone, Building, etc.) | Project codification |
-| `Tracker.xlsx` | 11 MB | Master output file (MIDP + Aconex + computed columns + summaries) | System output |
+| `Tracker.xlsx` | 11 MB | Master output: Tracker report (15,883 filtered) + Aconex sheets + Baseline + Corporate Summary + Baseline Summary + Control Findings + Lists | System output |
 
 ---
 
@@ -33,26 +49,45 @@ Single-discipline TIDP (Tender Information Document Package) — Structural disc
 
 **Purpose**: Planned documents for Structural discipline.
 
-**Header Block** (Rows 3–11, Column A = Label, Column B = Value):
+**Header Block** (Rows 3–11 for TIDP; Rows 3–10 for MIDP — layouts differ slightly):
+
+TIDP-STL.xlsx (rows 3–11):
 ```
-CLIENT              → Value in B3
-PROJECT             → Value in B4
-ORGANISATION        → Value in B5
-DISCIPLINE          → Value in B6 = "Structural" (NOT "STL" — that comes from F05_Discipline)
-APPROVER            → Value in B7
-DATE CREATED        → Value in B8 (datetime or date)
-DATE LAST UPDATED   → Value in B9
-REVISION NUMBER     → Value in B10
-DOCUMENT REFERENCE  → Value in B11
+CLIENT              → B3 = "Qiddiya"
+PROJECT             → B4 = "Qiddiya Performing Arts Center"
+ORGANISATION        → B5 = "Nesma & Partners"
+DISCIPLINE          → B6 = "Structural"        (NOT "STL" — that comes from F05)
+APPROVER            → B7 = "BSBG"
+DATE CREATED        → B8 (often blank)
+DATE LAST UPDATED   → B9 (often blank)
+REVISION NUMBER     → B10 = "00"
+DOCUMENT REFERENCE  → B11 = "QF01012-NES-C04518-TDP-XX..."
+```
+
+MIDP.xlsx (rows 3–10 — **no DISCIPLINE row**, APPROVER moves to row 6):
+```
+CLIENT              → B3
+PROJECT             → B4
+ORGANISATION        → B5
+APPROVER            → B6
+DATE CREATED        → B7 = 2025-11-18
+DATE LAST UPDATED   → B8 = 2026-08-30
+REVISION NUMBER     → B9
+DOCUMENT REFERENCE  → B10 = "QF01012-NES-C04518-MDP-GE..."
 ```
 
 **Notes on Header**:
-- Search for the *text* "DISCIPLINE" in column A; do not assume row 6.
+- **Always search by label text**, never assume row numbers (TIDP has 9 header rows, MIDP has 8, offsets differ).
+- The MIDP header does NOT have a DISCIPLINE row (multi-discipline). Import the discipline per-document from column V (CORPORATE DISCIPLINE).
 - The discipline code (STL) and corporate name (Structural) are stored separately and inferred from the data rows.
 
 **Data Table** (Named Range "TIDP" or found by searching for "DOCUMENT NUMBER" in column A):
 
-Typical header row: **Row 16** in sample. But search for "DOCUMENT NUMBER" to find it reliably.
+Confirmed header rows in samples:
+- `TIDP-STL.xlsx!TIDP_Sheet` → **row 16** (1,298 total rows, but many are empty template rows)
+- `MIDP.xlsx!MIDP` → **row 15** (~15,885 populated rows)
+
+**Always find header by searching for the text "DOCUMENT NUMBER" in column A** — never assume the row number.
 
 **Columns** (A–AH, descriptions per PLAN.md § 5.1.1):
 
@@ -186,26 +221,58 @@ Row 16+: Data rows
 
 **Purpose**: Raw export from Aconex software (all submissions, approvals, rejections, revisions, etc.); basis for the Tracker computed columns.
 
-**Header Row**: The row containing "Document No" in column C (or column D in Tracker variant).
+**Header Row**: **Row 11** in `MIDP.xlsx!Aconex History` (starts with blank col A, then "File" in col B). Also row 11 in `Tracker.xlsx!SHD_History`. Data starts at row 12.
 
-**Columns** (selected, per PLAN.md § 5.1.3):
+**Columns** (from `MIDP.xlsx!Aconex History`, starting col B — col A is blank sentinel):
 
 | Col | Excel Header | System Field | Type | Notes |
 |---|---|---|---|---|
-| A | File | `FileType` | Text | pdf, dwg |
-| B | File Name | `FileName` | Text | Uploaded filename |
-| C | Document No | `AconexDocNo` | Text | **May contain extra spaces** after hyphens and trailing `-PDF`. E.g., `"QF01012- NES- C04518- SDW- STR- 00- BLAD05- 2FL0101-PDF"` |
-| D | Revision | `Revision` | Text | "00", "01", "02", … (always read as text, preserve leading zero) |
-| E | Title | `Title` | Text | |
-| F | Status | `AconexStatus` | Text | "A - Approved", "Issued For Approval", "Responded", "Terminated", "No Longer in Use", … |
-| G | Review Status | `ReviewStatus` | Text/Enum | "Terminated", (blank) |
-| H | Date Modified | `DateModified` | DateTime | **Critical**: Has sub-second precision (e.g., "2025-12-15 14:23:47.123456"). Preserve in DB as `timestamp without time zone`. |
-| I | Type | `Type` | Text | "Shop Drawing", "Calculation", "Report" |
-| J | Discipline | `Discipline` | Text | "Structural", "Electrical", … (full name, not code) |
-| K | Area - Geographical / Zone | `Area` | Text | Geographic zone |
-| L | Venue - Building / Facilities | `Venue` | Text | Facility code |
-| M | Floor Level | `FloorLevel` | Text | |
-| N | Transmittal In | `TransmittalIn` | Text | Transmittal reference (blank or number) |
+| B | File | `FileType` | Text | pdf, dwg |
+| C | File Name | `FileName` | Text | Uploaded filename (e.g., `"QF01012-NES-C04518-SDW-STL-00-Z00000-0ZZ0001.pdf"`) |
+| D | Document No | `AconexDocNo` | Text | **May contain extra spaces** after hyphens and trailing `-PDF`. E.g., `"QF01012- NES- C04518- SDW- STR- 00- BLAD05- 2FL0101"` |
+| E | Revision | `Revision` | Text | "00", "01", "02", … (always read as text, preserve leading zero) |
+| F | Title | `Title` | Text | |
+| G | Status | `AconexStatus` | Text | See full list below |
+| H | Review Status | `ReviewStatus` | Text/Enum | See full list below |
+| I | Date Modified | `DateModified` | DateTime | **Critical**: Has sub-second precision (e.g., `2025-12-02 14:56:39.02700`). Preserve in DB as `timestamp without time zone`. |
+| J | Type | `Type` | Text | "Shop Drawing", "Calculation", "Report" |
+| K | Discipline | `Discipline` | Text | "Structural", "Electrical", … (full name, not code) |
+| L | Area - Geographical / Zone | `Area` | Text | e.g. "00 - All Areas" |
+| M | Venue - Building / Facilities | `Venue` | Text | |
+| N | Floor Level | `FloorLevel` | Text | |
+| O | Transmittal In | `TransmittalIn` | Text | Transmittal reference (blank or number) |
+
+**Verified unique Status values** (12 in MIDP Aconex History):
+```
+A - Approved
+B - Approved with Comments    ← PLURAL "Comments" (Lists sheet has typo "Comment" singular)
+C - Revise and Resubmit
+D - Rejected
+E - Review Not Required
+Issued For Approval
+Issued for Action
+Issued for information
+No Longer In Use              ← capital "In" (not "in Use")
+Open
+QA Checked
+Responded
+```
+
+**Verified unique Review Status values** (8):
+```
+A - Approved
+B - Approved with Comments
+C - Revise and Resubmit
+D - Rejected
+E - Review Not Required
+Pending
+QA Checked
+Terminated
+```
+
+**⚠ Case/Wording Discrepancies to Handle**:
+- Status data uses `"B - Approved with Comments"` (plural), but `Tracker.xlsx!Lists` maps `"B - Approved with Comment"` (singular). Import must normalize (compare case-insensitive + treat `Comment`/`Comments` as equivalent, OR add both variants to StatusMapping seed).
+- `"No Longer In Use"` uses capital `I`, not `"No Longer in Use"` as sometimes written in older docs.
 
 **Computed Columns** (Formulas in Tracker.xlsx; **must calculate in system**):
 
@@ -243,16 +310,28 @@ DocNoFinal same, Revision "01", DateModified later.
 
 #### 3.4 LISTS Sheet (in MIDP)
 
-**Purpose**: Status mapping table (old reference; superseded by Tracker Lists sheet).
+**Purpose**: **Legacy** DC workflow status mapping. `Tracker.xlsx!Lists` is authoritative for new data.
 
-**Columns**: Aconex Status → Unified Status
+**Columns**: `DC Status | Status` and `Type`
 
-| Aconex Status | Unified |
+Actual entries (10 rows):
+
+| DC Status | Unified Status |
 |---|---|
+| Submitted to Site | Under Review |
+| Site Rejected | Rejected |
+| Submitted to Client | Under Review |
+| For Information | Approved |
 | A - Approved | Approved |
-| B - Approved with Comments | Approved |
+| B - Approved with Comment | Approved |
 | C - Revise and Resubmit | Rejected |
-| … | … |
+| D - Rejected | Rejected |
+| E - Review Not Required | Approved |
+| QA Rejected | Rejected |
+
+Type column: `Shop Drawing`, `Calculation`, `Report`
+
+**⚠ Note the singular "Comment" in this legacy sheet vs. plural "Comments" in modern Aconex data.**
 
 ---
 
@@ -265,30 +344,87 @@ Master output file containing MIDP + Aconex + engine-computed columns + summary 
 
 #### 4.1 Tracker Sheet
 
-**Identical structure to MIDP sheet, plus computed columns**:
+**Purpose**: A **report view** (not the raw MIDP columns). One row per MIDP document with a de-normalized subset of MIDP fields + computed columns + "Selected Revision" columns.
 
-| Column | Formula | System Calculation | Notes |
+**Header Row**: **Row 11** (data starts row 12). ~15,883 rows.
+
+**Full column layout** (from `Tracker.xlsx!Tracker`, cols B–AE, col A blank sentinel):
+
+| Col | Header | System Origin | Notes |
 |---|---|---|---|
-| DateModified (new) | `MAXIFS(Aconex.DateModified, AconexDocNo_normalized=this.DocumentNumber)` | For each document, find max DateModified from Aconex revisions | null if no Aconex match |
-| LatestRow (index) | Index of row in Aconex with DateModified = max | Used to read other fields from Aconex | |
-| Revision | `Aconex[LatestRow].Revision` | Read from Aconex latest row | |
-| AconexStatus | `IF(AconexRevision.IsTerminated, "Terminated", AconexRevision.AconexStatus)` | Override if Terminated | |
-| Status (Unified) | `VLOOKUP(AconexStatus, Lists, UnifiedStatus)` | Map Aconex → Approved/Rejected/UnderReview/Withdrawn | |
-| SubmissionsCount | `IF(ISNUMBER(VALUE(Revision)), VALUE(Revision) + 1, NULL)` | Parse "00" → 1, "01" → 2, etc. | |
-| SubmissionDate | `MINIFS(Aconex.DateModified, AconexDocNo=this, Aconex.Revision=this.Revision)` | First occurrence of this revision | |
-| Transmittal | `Aconex[LatestRow].TransmittalIn` | Read from Aconex; blank if "0" | |
-| ActualStart | `MINIFS(Aconex.DateModified, AconexDocNo=this)` | Earliest submission for this doc | |
-| ActualFinish | `IF(Status="Approved", DateModified, NULL)` | Filled only if Status is Approved | |
-| PlannedStart | `IF(ScheduleMode=Baseline, XLOOKUP(ActivityId, Baseline.ActivityCode, Baseline.Finish), DeliveryMilestone)` | Baseline mode: Submittal Finish; Working Plan mode: DeliveryMilestone | |
-| PlannedFinish | `IF(ScheduleMode=Baseline, XLOOKUP(ActivityId_Approval, Baseline.ActivityCode, Baseline.Finish), PlannedStart + 28)` | Baseline: Approval Finish; Working Plan: DeliveryMilestone + 28 days | |
+| B | Type | `Document.F04DocType` | "SDW", "CAL", "REP"… |
+| C | Discipline | `Document.CorporateDiscipline` | "Structural", "Electrical"… |
+| D | Document No | `Document.DocumentNumber` | Generated `F01-F02-…-F08A F08B F08C` |
+| E | Title | `Document.Title` | |
+| F | Delivery Milestone | `Document.DeliveryMilestone` | |
+| G | Activity ID | `Document.ActivityId` | Baseline key |
+| H | Package Name | `Document.PackageName` | Often blank |
+| I | Building | `Document.F07Building` | |
+| J | Level | `Document.F08BLevel` | |
+| K | Trade | `Document.F05Discipline` | Short discipline code (STL, STR, ARC…) |
+| L | Author | `Document.Exchanges[0].Author` | 01-AUTHOR |
+| M | *(spacer, blank)* | — | |
+| N | # of Submissions | `Snapshot.SubmissionsCount` | Latest revision + 1 |
+| O | Revision | `Snapshot.Revision` | Latest revision string ("01") |
+| P | Aconex Status | `Snapshot.AconexStatus` | Latest (or "Terminated" override) |
+| Q | Status | `Snapshot.Status` (Unified) | Approved/Rejected/UnderReview/Withdrawn |
+| R | Submission Date | `Snapshot.SubmissionDate` | First DateModified for this revision |
+| S | Date Modified | `Snapshot.DateModified` | Latest DateModified |
+| T | Transmittal | `Snapshot.Transmittal` | From TransmittalIn |
+| U | *(spacer, blank)* | — | |
+| V | Sel Rev | *(user-picked revision)* | "Selected Revision" column set — chosen revision, not latest |
+| W | Sel Status | | |
+| X | Sel Sub Date | | |
+| Y | Sel Date Modified | | |
+| Z | Sel Transmittal | | |
+| AA | *(spacer, blank)* | — | |
+| AB | Planned Start | `Snapshot.PlannedStart` | |
+| AC | Planned Finish | `Snapshot.PlannedFinish` | |
+| AD | Actual Start | `Snapshot.ActualStart` | min DateModified across all revisions |
+| AE | Actual Finish | `Snapshot.ActualFinish` | If Status = Approved, latest DateModified; else null |
 
-**Sample Row** (from Tracker.xlsx):
+**Computed Column Formulas** (recreated as engine rules — see PLAN.md § 5.4.1):
+
+| Column | Formula (Excel logic) | System Calculation |
+|---|---|---|
+| DateModified (S) | `MAXIFS(Aconex.DateModified, AconexDocNo_normalized=this.DocumentNumber)` | max over Aconex rows; null if none |
+| Revision (O) | `Aconex[LatestRow].Revision` | Latest revision from Aconex |
+| AconexStatus (P) | `IF(latest.IsTerminated, "Terminated", latest.AconexStatus)` | Override if Terminated |
+| Status (Q) | `VLOOKUP(AconexStatus, Lists, UnifiedStatus)` | Map via StatusMapping |
+| # Submissions (N) | `IF(ISNUMBER(VALUE(Revision)), VALUE(Revision)+1, NULL)` | Parse "00" → 1, "01" → 2 |
+| Submission Date (R) | `MINIFS(Aconex.DateModified, AconexDocNo=this, Aconex.Revision=latest.Revision)` | First submission of latest revision |
+| Transmittal (T) | `latest.TransmittalIn` (blank if 0) | |
+| Actual Start (AD) | `MINIFS(Aconex.DateModified, AconexDocNo=this)` | Earliest across all revisions |
+| Actual Finish (AE) | `IF(Status="Approved", DateModified, NULL)` | Only when approved |
+| Planned Start (AB) | Baseline mode: `XLOOKUP(ActivityId, Baseline.ActivityCode WHERE Type=Submittal, Baseline.Finish)`; WorkingPlan: `DeliveryMilestone` | |
+| Planned Finish (AC) | Baseline mode: `XLOOKUP(Package matching, Baseline.ActivityCode WHERE Type=Approval, Baseline.Finish)`; WorkingPlan: `PlannedStart + WorkingPlanApprovalDays (28)` | |
+
+**Sample Row 12 (actual data)**:
 ```
-QF01012-NES-C04518-SDW-STR-00-BLAD05-2FL0101 | Structural GA | … | STR | Structural |
-01-Author | LOD400 | … | 01-ExchangeDate |
-… (02-Stage columns) |
-2025-12-22 09:15:30.654321 | 01 | Issued For Approval | UnderReview | 2 | 2025-12-15 14:23:47 | TR002 |
-2025-12-15 14:23:47 | 2025-12-22 09:15:30 | null |  (wait for approval) | 2025-12-29 | null |
+B: Type = "SDW"
+C: Discipline = "Structural"
+D: Document No = "QF01012-NES-C04518-SDW-STL-00-Z00000-0ZZ0004"
+E: Title = "BLADE 4 - Welding Details"
+F: Delivery Milestone = 2025-12-19
+G: Activity ID = "QP.E.ST.GEN.GEN.1000"
+I: Building = "Z00000"
+J: Level = "ZZ"
+K: Trade = "STL"
+L: Author = "JINGGONG"
+N: # of Submissions = 2
+O: Revision = "01"
+P: Aconex Status = "B - Approved with Comments"    ← plural
+Q: Status = "Approved"
+R: Submission Date = 2026-04-18 10:20:36.551
+S: Date Modified = 2026-04-26 13:04:49.041
+T: Transmittal = "BSBG-TRANSMIT-000156"
+V: Sel Rev = "00"      W: Sel Status = "B - Approved with Comments"
+X: Sel Sub Date = 2026-03-31 11:35:50.696   Y: Sel Date Modified = 2026-04-09 11:53:00.743
+Z: Sel Transmittal = "BSBG-WTRAN-003904"
+AB: Planned Start = 2025-12-14
+AC: Planned Finish = 2025-12-28
+AD: Actual Start = 2026-03-31 11:35:50.696
+AE: Actual Finish = 2026-04-26 13:04:49.041
 ```
 
 #### 4.2 SHD_History & SHD_Latest Sheets
@@ -301,30 +437,94 @@ Same as Baseline in TIDP-STL.xlsx (copy or link).
 
 #### 4.4 Corporate Summary Sheet
 
-**Purpose**: Weekly progress, discipline breakdown, S-curve (planned vs. earned value).
+**Purpose**: Wide dashboard sheet with 5 panels side-by-side. **Groups by Discipline AND by Author** (both in the same sheet, stacked).
 
-**Structure**: 
-- **Header** (rows 1–5): ReportDate, ScheduleMode, etc.
-- **Weekly Data** (table): Columns Week Ending, WeeklyPlanned, WeeklySub, WeeklyApproved, CumulativePlanned, CumulativeSub, CumulativeApproved
-- **Discipline Breakdown** (wide table): For each discipline (Structural, Electrical, …), columns Total, Planned, Submitted, Approved, Rejected, UnderReview, Withdrawn, Quality%, PlannedValue%, EarnedValue%
+**Header panels** (row 1–2 titles, row 7 column headers):
 
-**Example** (discipline row for Structural):
+| Panel | Columns | Header (row 7) fields |
+|---|---|---|
+| Timeline (weekly) | B–G | Week, From, To, Weekly Planned, Weekly Submitted, Weekly Approved |
+| Progress | I–M | Disciplines, Total Drawings, Planned, Submitted, Approved |
+| Quality | O–U | Disciplines, Approved, Rejected, Under Review, Withdrawn, Total Revisions, Quality |
+| Planned Value | W–AB | Disciplines, Pending, Sub 1, Sub 2, Approved, Planned |
+| Earned Value | AD–AI | Disciplines, Pending, Sub 1, Sub 2, Approved, Completed |
+
+**Header values** (rows 4–6):
+- C4: Report Date = `2026-08-30`
+- C5: Current Week = `2026-08-30 23:59:59`
+- G4: Start Week = `2025-11-02 23:59:59`
+- G5: End Week = `2028-10-08 23:59:59`
+- Totals row 5 (J/K/L/M): Total=15883, Planned=4493, Submitted=5531, Approved=3834
+- Weight row 6 (cols X/Y/Z/AA for Planned Value; AE/AF/AG/AH for Earned Value): `0, 0.6, 0.9, 1.0`
+
+**Weekly rows 8–end** (weeks 1 through ~150):
+- Week 1: 2025-10-26 → 2025-11-02, Planned=11, Submitted=0, Approved=0
+- Week 2: 2025-11-02 → 2025-11-09, Planned=0, Submitted=0, Approved=0
+- Week 5: 2025-11-23 → 2025-11-30, Planned=12, Submitted=65, Approved=0 ✓
+- Week 7: 2025-12-07 → 2025-12-14, Planned=307, Submitted=112, Approved=4
+
+**Discipline rows 8–16 (I–AI)** — verified cached values:
+
+| Discipline | Total | Planned | Submitted | Approved | Rejected | UnderReview | Withdrawn | TotRevs | Quality | Pending | Sub1 | Sub2 | PVApp | Planned% | EVPend | EVSub1 | EVSub2 | EVApp | Completed% |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Architectural | 1955 | 133 | 370 | 222 | 87 | 61 | 0 | 633 | 0.3881 | 1822 | 10 | 0 | 123 | 0.0660 | 1585 | 91 | 57 | 222 | 0.1677 |
+| Electrical | 2998 | 252 | 858 | 624 | 188 | 46 | 0 | 1054 | **0.6190** | 2746 | 6 | 0 | 246 | 0.0833 | 2140 | 193 | 41 | 624 | 0.2591 |
+| Façade | 1009 | 300 | 98 | 63 | 35 | 0 | 0 | 181 | 0.3481 | 709 | 62 | 0 | 238 | 0.2727 | 911 | 27 | 8 | 63 | 0.0856 |
+| Fire & Life Safety | 751 | 55 | 264 | 105 | 134 | 25 | 0 | 348 | 0.3251 | 696 | 4 | 0 | 51 | 0.0711 | 487 | 90 | 69 | 105 | 0.2944 |
+| Infrastructure | 346 | 48 | 80 | 62 | 15 | 3 | 0 | 144 | 0.4397 | 298 | 0 | 0 | 48 | 0.1387 | 266 | 15 | 3 | 62 | 0.2130 |
+| Interior Design | 1152 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | (null) | 1152 | 0 | 0 | 0 | 0 | 1152 | 0 | 0 | 0 | 0 |
+| Landscape | 882 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | (null) | 882 | 0 | 0 | 0 | 0 | 882 | 0 | 0 | 0 | 0 |
+| Mechanical | 1513 | 293 | 527 | 130 | 298 | 99 | 0 | 685 | 0.2218 | 1220 | 30 | 0 | 263 | 0.1857 | 986 | 316 | 81 | 130 | 0.2594 |
+| Structural | 5277 | 3412 | 3334 | 2628 | 299 | 407 | 0 | 5041 | 0.5671 | 1865 | 27 | 0 | 3385 | **0.6445** | 1943 | 432 | 274 | 2628 | **0.5939** |
+
+**Author rows 18+** — same layout, one row per Author (13 authors):
 ```
-Discipline: Structural
-Total: 1245
-Planned (PlannedStart ≤ ReportDate): 1100
-Submitted (ActualStart ≤ ReportDate): 850
-Approved (ActualFinish ≤ ReportDate): 620
-Quality (Approved / (TotalRevisions - UnderReview)): 0.62
-PlannedValue% (S1*0.6 + S2*0.9 + Approved*1.0) / Total: 0.645
-EarnedValue% (same weights, but using Status & SubmissionsCount): 0.594
+AFCO, ALUTEC, DOKA, FallProtec, JINGGONG, NAP PMO, Nesma & Partners,
+Nesma PMO, Provisional Sum, RAWABI, Sana Al-Jazerah,
+Subcontractor - Unassigned, TKE
 ```
 
-**Formulas to implement**:
-1. **Week End Calculation**: Week ends on Sunday 23:59:59. Formula: `= DATE(YEAR(date), MONTH(date), DAY(date) + (7 - WEEKDAY(date, 2)))`
-   - Example: 2025-11-04 (Tuesday) → 2025-11-09 (Sunday)
-2. **Weekly Counts**: For each week, count documents where PlannedStart falls in (PriorSundayEnd, ThisSundayEnd]
-3. **Discipline Grouping**: Group Tracker rows by CorporateDiscipline, then apply the rules
+Sample: AFCO row: 40 / 32 / 24 / 24 (Total/Planned/Submitted/Approved)
+
+**Formulas** (recreated as engine rules):
+
+1. **Week End**: Sunday 23:59:59. Formula: `= date + (7 - WEEKDAY(date, 2)) days at 23:59:59`
+   - Example: 2025-11-04 (Tue) → 2025-11-09 (Sun) 23:59:59
+   - **Note**: Even a Sunday input goes to the next Sunday when `WEEKDAY(sun,2)=7`, giving `+0` days — so *Sunday stays on itself* at 23:59:59.
+
+2. **Weekly Counts** (for each week W with (From,To] boundaries):
+   - `WeeklyPlanned  = Count(PlannedStart  in (From,To])`
+   - `WeeklySubmitted = Count(ActualStart  in (From,To])`
+   - `WeeklyApproved  = Count(ActualFinish in (From,To])`
+
+3. **Progress (per group — Discipline or Author, at Current Week C)**:
+   - Total = Count(all docs)
+   - Planned = Count(PlannedStart ≤ C)
+   - Submitted = Count(ActualStart ≤ C)
+   - Approved = Count(ActualFinish ≤ C)
+
+4. **Quality (per group)**:
+   - Approved, Rejected, UnderReview, Withdrawn — count by Unified Status (Withdrawn = 0 in all rows here)
+   - TotalRevisions = Σ(SubmissionsCount) − Withdrawn
+   - Quality = Approved / (TotalRevisions − UnderReview) ; null if denominator is 0
+
+5. **Planned Value (per group, weights 0/0.6/0.9/1.0)**:
+   - Pending = Count(PlannedStart > C or null)
+   - Approved (PV Approved) = Count(PlannedFinish ≤ C)
+   - Sub2 = 0 (currently unused — reserved for later PV rules; verified in sample all Sub2=0)
+   - Sub1 = Count(PlannedStart ≤ C) − Approved − Sub2
+   - Planned% = (Sub1·0.6 + Sub2·0.9 + Approved·1.0) / Total
+
+6. **Earned Value (per group, same weights)**:
+   - Pending = Count(Status ≠ Approved AND SubmissionsCount is null)
+   - Sub1 = Count(Status ≠ Approved AND SubmissionsCount = 1)
+   - Sub2 = Count(Status ≠ Approved AND SubmissionsCount ≥ 2)
+   - Approved = Count(Status = Approved)
+   - Completed% = (Sub1·0.6 + Sub2·0.9 + Approved·1.0) / Total
+
+**Grouping**:
+- `CorporateDiscipline` (column V in MIDP) drives the discipline breakdown.
+- Author = column W (01-AUTHOR) drives the author breakdown. Only the first exchange's author is used (not the second stage).
 
 #### 4.5 Baseline Summary Sheet
 
@@ -404,29 +604,77 @@ PackageStatus: Submitted  (all submitted, none approved yet)
 
 ## 6. Discrepancies Between PLAN.md and Actual Excel
 
-**As of 2026-09-04**, after review:
+**As of 2026-09-04** — after verifying by reading the actual xlsx files with openpyxl:
 
-### ✓ Confirmed
-- ✓ Document numbering formula: F01-F02-F03-F04-F05-F06-F07-F08A F08B F08C (no spaces in production)
-- ✓ DateModified precision: sub-second (microseconds in Aconex)
-- ✓ Baseline linking: ActivityCode + Package-based; Submittal/Approval pair
-- ✓ Status mapping: 12 statuses → 4 unified (Approved, Rejected, UnderReview, Withdrawn)
-- ✓ Discipline code vs. corporate name: Separate fields; e.g., F05_Discipline="STL" → CorporateDiscipline="Structural"
-- ✓ Exchange stages: Two DataExchange blocks (01 Submittal, 02 Approval)
-- ✓ ReportDate: Default to TODAY(); configurable per Project
-- ✓ Leading zeros: Zone (00), Sequence (0004) preserved
+### ✓ Confirmed against real data
+- Document numbering formula: F01-F02-F03-F04-F05-F06-F07-F08A F08B F08C (no spaces in production) — e.g. `QF01012-NES-C04518-SDW-STL-00-Z00000-0ZZ0004`
+- DateModified sub-second precision preserved (e.g. `2025-12-02 14:56:39.02700`)
+- Baseline linking: ActivityCode + Package with Submittal/Approval pair
+- Discipline code vs. corporate name: Separate fields; F05="STL" → CorporateDiscipline="Structural"
+- Exchange stages: 01 (Submittal), 02 (Approval) — two blocks W–AB and AC–AH
+- Leading zeros: Zone (00), Sequence (0004) preserved in samples
+- Weekly boundary: Week ends Sunday 23:59:59 — verified 2025-11-02→2025-11-09 (Week 2)
+- Report Date 2026-08-30: Electrical Quality=0.6190, Structural Planned%=0.6445, Structural Completed%=0.5939 ✓ match test targets
+- PV/EV weights = 0, 0.6, 0.9, 1.0 ✓
 
-### ⚠ Needs Verification
-- **Aconex DocNo Normalization**: Exact rule for removing spaces and `-PDF` suffix — verified on 3 samples, assumed universal
-- **Weekly Boundary**: Week ends on Sunday 23:59:59 — verify exact formula for 2025-11-02 to 2025-11-09
-- **SPI Weights**: Default weights (Pending 0%, Sub1 60%, Sub2 90%, Approved 100%) — confirm if any override in Corporate Summary
-- **Unused Baseline Packages**: Rule for "Unused" (Total count = 0 in MIDP documents) — needs integration test
-- **PromoteBatch Snapshot JSON**: Format for storing pre-promotion state — confirm exact JSON structure
+### ❌ PLAN.md corrections needed (fixed here; PLAN.md must be updated)
 
-### ❌ Corrections to PLAN.md
-- **None identified yet** (PLAN.md appears to match Excel structure closely)
+| # | PLAN.md says | Reality | Fix |
+|---|---|---|---|
+| 1 | MIDP ≈ 10,598 docs (§ 5.1.2) | **15,885 rows in MIDP.xlsx!MIDP; Tracker filters to 15,883** | Change all references; test target = 15,883 |
+| 2 | MIDP header row = 15 | ✓ row 15 (accurate) | (no change) |
+| 3 | Aconex header "row with Document No in col C" | **Row 11**, col D (in MIDP.xlsx); col E (in Tracker) — col A/B are spacer/File | Reword to "row 11; search by 'Document No' anywhere in row" |
+| 4 | Status "B - Approved with Comments" (plural in PLAN table) | Aconex data uses **plural** ("Comments"), but `Tracker.xlsx!Lists` maps **singular** ("Comment") | Seed StatusMapping with BOTH variants; comparator = case-insensitive + trim + normalize whitespace |
+| 5 | Status "No Longer in Use" (lowercase i) | Data uses **"No Longer In Use"** (capital I) | Update seed value |
+| 6 | Status list has 13 entries | Actual: **12 in Status, 8 in Review Status**. Missing from PLAN.md seed: `Issued for Action`, `Open`, `Responded` | Add mappings (see § 7 below) |
+| 7 | Tracker sheet = "same as MIDP + computed" | Tracker is a **narrower report view** with just 22 meaningful columns (Type, Disc, DocNo, Title, Milestone, ActivityID, Package, Building, Level, Trade, Author + computed) — NOT full MIDP W–AH exchange data | Restate: Tracker sheet is a report view; MIDP row is preserved via `Document` entity |
+| 8 | Corporate Summary = discipline-only | Corporate Summary **also groups by Author** (13 authors listed in rows 18+, same schema as disciplines) | Add Author rollup to CorporateSummaryEngine |
+| 9 | Corporate Summary schema (in § 5.4.2) | 5 panels: Timeline / Progress / Quality / Planned Value / Earned Value — with a `Sub 2` slot always = 0 in current data | Restate the wide-table layout as-is |
+| 10 | PLAN.md test target: "Electrical 2998/858/624/46 Quality ≈ 0.619" | ✓ Verified. Also add: PV Planned% = 0.0833, EV Completed% = 0.2591 | Extend test target set |
+| 11 | PLAN.md § 5.1.4 says Baseline header at row containing "Activity Code" | ✓ verified — row 2 in TIDP-STL, row 2 in Baseline.xlsx, **row 5 in Tracker.xlsx** | Emphasize: always search by "Activity Code" |
+| 12 | PLAN.md § 5.1.5 says Tracker has SHD_History / SHD_Latest / Lists / Corporate Summary / Baseline Summary / Control Findings | ✓ all present | (no change) |
+| 13 | Missing from PLAN: "Selected Revision" columns are in Tracker (V–Z) | These are stored per-doc as user picks and rendered on the document detail page | Add `SelectedRevisionId` field to Document (or query param on tracker page) |
+| 14 | Missing from PLAN: MIDP LISTS sheet has legacy statuses ("Submitted to Site", "Submitted to Client", "For Information", "Site Rejected") | These come from an older DC workflow; **Tracker.xlsx!Lists is authoritative** — but seeder should also insert legacy mappings for backfill imports | Add legacy statuses to StatusMapping seed as deprecated |
+| 15 | MIDP header block layout matches TIDP | Actually **MIDP omits DISCIPLINE row and APPROVER shifts to row 6** | Read header block by label, not by row |
+
+### ⚠ Still to verify (only via tests)
+- **Aconex DocNo Normalization** boundary cases: 3 spaces? tabs? trailing `-DWG`? — only 3 patterns confirmed so far
+- **Sub 2 always 0**: In every discipline/author row the Sub2 columns (Z, AG) are 0 — either a data gap or Sub2 is defined but not populated. **Confirm the intended definition of Sub2** with the customer before implementing.
+- **`# of Submissions` when Revision non-numeric**: In sample, Revision is always a 2-digit number. Behavior when it's e.g. "P00" or "A" unknown — assume null.
+- **Interior Design / Landscape have 0 across the board**: Why? Are these disciplines gated (no baseline activities allocated) or is it truly zero-progress? Confirm with data owner.
 
 ---
+
+## 6b. Final StatusMapping Seed (authoritative)
+
+Combining `Tracker.xlsx!Lists` + observed status values + legacy `MIDP.xlsx!LISTS`:
+
+| Aconex / Source Status | Unified | Notes |
+|---|---|---|
+| A - Approved | Approved | |
+| B - Approved with Comments | Approved | plural — modern Aconex |
+| B - Approved with Comment | Approved | **singular — legacy Tracker Lists** (dedupe) |
+| C - Revise and Resubmit | Rejected | |
+| D - Rejected | Rejected | |
+| E - Review Not Required | Approved | |
+| Issued For Approval | UnderReview | (capital F in "For") |
+| Issued for Action | UnderReview | Added — observed in data, not in either Lists sheet |
+| Issued for information | Approved | |
+| For Review | UnderReview | |
+| No Longer In Use | Withdrawn | capital I |
+| No Longer in Use | Withdrawn | (dedupe defensive) |
+| Under Review | UnderReview | |
+| QA Rejected | Rejected | |
+| QA Checked | UnderReview | |
+| Terminated | Withdrawn | (only appears in Review Status; used as computed override) |
+| Open | UnderReview | Added — observed in data |
+| Responded | UnderReview | Added — observed; treat as awaiting response |
+| Submitted to Site | UnderReview | Legacy MIDP LISTS |
+| Site Rejected | Rejected | Legacy MIDP LISTS |
+| Submitted to Client | UnderReview | Legacy MIDP LISTS |
+| For Information | Approved | Legacy MIDP LISTS |
+
+**Matching rule**: case-insensitive + Trim + collapse internal whitespace before compare. Unknown status → null + Warning in ImportBatch.Log.
 
 ## 7. Rules to Implement (Summary of Calculations)
 
