@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RunSettings>
+  <RunConfiguration>
+    <!-- Serialise cross-assembly test execution so heavy Infrastructure and API
+         integration tests don't fight Neon's connection cap simultaneously. -->
+    <MaxCpuCount>1</MaxCpuCount>
+  </RunConfiguration>
+</RunSettings>
