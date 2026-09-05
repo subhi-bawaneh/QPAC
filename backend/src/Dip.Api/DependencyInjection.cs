@@ -1,13 +1,10 @@
 using System.Reflection;
 using System.Text;
 using Dip.Api.Common;
-using Dip.Api.Dispatcher;
 using Dip.Application.Abstractions;
 using Dip.Application.Behaviors;
 using FluentValidation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 

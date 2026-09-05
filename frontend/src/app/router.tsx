@@ -1,3 +1,4 @@
+import { Suspense, lazy } from 'react'
 import { Route, Routes } from 'react-router-dom'
 import { AppLayout } from './layout/AppLayout'
 import { RequireAuth, RequirePermission } from '@/shared/auth/RequireAuth'
@@ -11,6 +12,14 @@ import { TrackerPage } from '@/features/tracker/TrackerPage'
 import { MidpPage } from '@/features/midp/MidpPage'
 import { BaselinePage } from '@/features/baseline/BaselinePage'
 import { ListsPage } from '@/features/lists/ListsPage'
+import { ControlFindingsPage } from '@/features/findings/ControlFindingsPage'
+import { Spinner } from '@/shared/ui/spinner'
+
+// Recharts is ~450 kB of the bundle and only the Summary page needs it, so that
+// route is split out: signing in no longer downloads a charting library.
+const SummaryPage = lazy(async () => ({
+  default: (await import('@/features/summary/SummaryPage')).SummaryPage,
+}))
 
 export function AppRoutes() {
   return (
@@ -28,12 +37,13 @@ export function AppRoutes() {
             <Route path="tracker" element={<TrackerPage />} />
             <Route
               path="summary"
-              element={<PlaceholderPage title="Summary" phase="6.5" description="Dashboard, Corporate Summary, Baseline Summary and EVM — the engines are done and verified against Tracker.xlsx." />}
+              element={
+                <Suspense fallback={<Spinner label="Loading charts…" />}>
+                  <SummaryPage />
+                </Suspense>
+              }
             />
-            <Route
-              path="findings"
-              element={<PlaceholderPage title="Control Findings" phase="6.5" description="The four anomaly reports, with export." />}
-            />
+            <Route path="findings" element={<ControlFindingsPage />} />
           </Route>
 
           <Route element={<RequirePermission permission={Permissions.baselineManage} />}>
