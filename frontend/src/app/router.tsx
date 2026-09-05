@@ -7,6 +7,10 @@ import { DashboardPage } from '@/features/dashboard/DashboardPage'
 import { PlaceholderPage } from '@/features/placeholder/PlaceholderPage'
 import { FolderExplorerPage } from '@/features/folders/FolderExplorerPage'
 import { DraftReviewPage } from '@/features/drafts/DraftReviewPage'
+import { TrackerPage } from '@/features/tracker/TrackerPage'
+import { MidpPage } from '@/features/midp/MidpPage'
+import { BaselinePage } from '@/features/baseline/BaselinePage'
+import { ListsPage } from '@/features/lists/ListsPage'
 
 export function AppRoutes() {
   return (
@@ -20,14 +24,8 @@ export function AppRoutes() {
           <Route element={<RequirePermission permission={Permissions.reportsView} />}>
             <Route path="tidps" element={<FolderExplorerPage />} />
             <Route path="drafts/:folderFileId" element={<DraftReviewPage />} />
-            <Route
-              path="midp"
-              element={<PlaceholderPage title="MIDP" phase="6.4" description="The master document grid with filters and export." />}
-            />
-            <Route
-              path="tracker"
-              element={<PlaceholderPage title="Tracker" phase="6.4" description="Server-paged tracker with a document drawer showing every revision." />}
-            />
+            <Route path="midp" element={<MidpPage />} />
+            <Route path="tracker" element={<TrackerPage />} />
             <Route
               path="summary"
               element={<PlaceholderPage title="Summary" phase="6.5" description="Dashboard, Corporate Summary, Baseline Summary and EVM — the engines are done and verified against Tracker.xlsx." />}
@@ -39,17 +37,11 @@ export function AppRoutes() {
           </Route>
 
           <Route element={<RequirePermission permission={Permissions.baselineManage} />}>
-            <Route
-              path="baseline"
-              element={<PlaceholderPage title="Baseline" phase="6.4" description="Baseline activities, import and replace, used/unused packages." />}
-            />
+            <Route path="baseline" element={<BaselinePage />} />
           </Route>
 
           <Route element={<RequirePermission permission={Permissions.listsManage} />}>
-            <Route
-              path="lists"
-              element={<PlaceholderPage title="Lists" phase="6.4" description="Picklists and the Aconex status mapping." />}
-            />
+            <Route path="lists" element={<ListsPage />} />
           </Route>
 
           <Route element={<RequirePermission permission={Permissions.usersManage} />}>

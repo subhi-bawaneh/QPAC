@@ -18,12 +18,12 @@ export interface NavItem {
 export const navigation: NavItem[] = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/tidps', label: 'TIDPs', icon: FolderTree, permission: Permissions.reportsView },
-  { to: '/midp', label: 'MIDP', icon: FileSpreadsheet, permission: Permissions.reportsView, phase: '6.4' },
-  { to: '/baseline', label: 'Baseline', icon: CalendarRange, permission: Permissions.baselineManage, phase: '6.4' },
-  { to: '/tracker', label: 'Tracker', icon: Table2, permission: Permissions.reportsView, phase: '6.4' },
+  { to: '/midp', label: 'MIDP', icon: FileSpreadsheet, permission: Permissions.reportsView },
+  { to: '/baseline', label: 'Baseline', icon: CalendarRange, permission: Permissions.baselineManage },
+  { to: '/tracker', label: 'Tracker', icon: Table2, permission: Permissions.reportsView },
   { to: '/summary', label: 'Summary', icon: LayoutDashboard, permission: Permissions.reportsView, phase: '6.5' },
   { to: '/findings', label: 'Control Findings', icon: AlertTriangle, permission: Permissions.reportsView, phase: '6.5' },
-  { to: '/lists', label: 'Lists', icon: ListChecks, permission: Permissions.listsManage, phase: '6.4' },
+  { to: '/lists', label: 'Lists', icon: ListChecks, permission: Permissions.listsManage },
   { to: '/admin/users', label: 'Users', icon: Users, permission: Permissions.usersManage, phase: '6.6' },
   { to: '/admin/settings', label: 'Settings', icon: Settings, permission: Permissions.projectSettings, phase: '6.6' },
 ]

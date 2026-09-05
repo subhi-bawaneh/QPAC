@@ -225,3 +225,84 @@ export interface RollbackResult {
   reinserted: number
   recalculationRequired: boolean
 }
+
+// ---------------------------------------------------------------- reports
+
+export type UnifiedStatus = 'Approved' | 'Rejected' | 'UnderReview' | 'Withdrawn'
+export type BaselineActivityType = 'Submittal' | 'Approval'
+
+export interface TrackerRow {
+  documentId: string
+  documentNumber: string
+  type: string
+  discipline: string
+  title: string
+  deliveryMilestone: string | null
+  activityId: string | null
+  packageName: string | null
+  building: string
+  level: string
+  trade: string
+  author: string | null
+  submissionsCount: number | null
+  revision: string | null
+  aconexStatus: string | null
+  status: UnifiedStatus | null
+  submissionDate: string | null
+  dateModified: string | null
+  transmittal: string | null
+  plannedStart: string | null
+  plannedFinish: string | null
+  actualStart: string | null
+  actualFinish: string | null
+}
+
+export interface TrackerRevision {
+  id: string
+  revision: string
+  aconexStatus: string
+  status: UnifiedStatus | null
+  reviewStatus: string | null
+  dateModified: string
+  transmittalIn: string | null
+  fileType: string
+  fileName: string
+  isLatest: boolean
+  isTerminated: boolean
+}
+
+export interface TrackerDocument {
+  row: TrackerRow
+  revisions: TrackerRevision[]
+}
+
+export interface BaselineActivityRow {
+  id: string
+  activityCode: string
+  package: string
+  type: BaselineActivityType
+  originalDuration: number
+  start: string
+  finish: string
+  documentCount: number
+  used: boolean
+}
+
+export interface PicklistItem {
+  id: string
+  code: string
+  description: string
+  sortOrder: number
+}
+
+export interface PicklistGroup {
+  field: string
+  items: PicklistItem[]
+}
+
+export interface StatusMappingRow {
+  id: string
+  aconexStatus: string
+  status: UnifiedStatus
+  isLegacy: boolean
+}
