@@ -21,6 +21,23 @@ public sealed record TrackerRow(
     DateTime? ActualStart,
     DateTime? ActualFinish)
 {
+    // Rebuilds a row from its stored snapshot, so the report engines can run over
+    // materialised data without re-reading the Aconex history.
+    public static TrackerRow FromSnapshot(DocumentSnapshot snapshot, string documentNumber) => new(
+        snapshot.DocumentId,
+        documentNumber,
+        snapshot.SubmissionsCount,
+        snapshot.Revision,
+        snapshot.AconexStatus,
+        snapshot.Status,
+        snapshot.SubmissionDate,
+        snapshot.DateModified,
+        snapshot.Transmittal,
+        snapshot.PlannedStart,
+        snapshot.PlannedFinish,
+        snapshot.ActualStart,
+        snapshot.ActualFinish);
+
     public DocumentSnapshot ToSnapshot(Guid projectId, DateTime computedAt) => new()
     {
         DocumentId = DocumentId,

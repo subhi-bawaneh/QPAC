@@ -105,6 +105,7 @@ public static class DependencyInjection
         services.AddScoped<IDispatcher, Dispatcher.Dispatcher>();
         services.AddScoped<ICurrentUser, CurrentUser>();
         services.AddScoped<Features.Imports.ImportDispatcher>();
+        services.AddScoped<Features.Recalculation.RecalculationService>();
 
         // Pipeline behaviors — order matters: Logging first, Auth second, then Validation, then Transaction (commands only).
         services.AddScoped(typeof(IPipelineBehavior<,>), typeof(LoggingBehavior<,>));
