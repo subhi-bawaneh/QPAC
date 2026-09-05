@@ -26,6 +26,18 @@ public static class FileKindDetector
             return FileKind.Midp;
         }
 
+        // The sample and hand-named files use the plain words rather than the coded
+        // segments above — samples/TIDP-STL.xlsx, samples/MIDP.xlsx. Checked after the
+        // coded forms so a production name always wins.
+        if (name.Contains("TIDP", StringComparison.Ordinal))
+        {
+            return FileKind.Tidp;
+        }
+        if (name.Contains("MIDP", StringComparison.Ordinal))
+        {
+            return FileKind.Midp;
+        }
+
         // Whole-word matches, case-insensitive because titles vary.
         if (name.Contains("TRACKER", StringComparison.Ordinal))
         {

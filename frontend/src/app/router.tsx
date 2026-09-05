@@ -5,6 +5,7 @@ import { Permissions } from '@/shared/auth/permissions'
 import { LoginPage } from '@/features/auth/LoginPage'
 import { DashboardPage } from '@/features/dashboard/DashboardPage'
 import { PlaceholderPage } from '@/features/placeholder/PlaceholderPage'
+import { FolderExplorerPage } from '@/features/folders/FolderExplorerPage'
 
 export function AppRoutes() {
   return (
@@ -16,16 +17,7 @@ export function AppRoutes() {
           <Route index element={<DashboardPage />} />
 
           <Route element={<RequirePermission permission={Permissions.reportsView} />}>
-            <Route
-              path="tidps"
-              element={
-                <PlaceholderPage
-                  title="TIDPs"
-                  phase="6.2"
-                  description="Drive-like folder explorer: tree, target badges, sync, upload and chunked import progress."
-                />
-              }
-            />
+            <Route path="tidps" element={<FolderExplorerPage />} />
             <Route
               path="midp"
               element={<PlaceholderPage title="MIDP" phase="6.4" description="The master document grid with filters and export." />}

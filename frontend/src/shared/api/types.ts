@@ -22,22 +22,61 @@ export type DataTarget = 'Live' | 'Draft'
 export type ImportState = 'NotImported' | 'Imported' | 'Outdated' | 'Failed'
 export type FileKind = 'Unknown' | 'Tidp' | 'Midp' | 'Baseline' | 'AconexHistory' | 'Lists' | 'Picklists'
 
+export type FileSource = 'Drive' | 'Upload'
+export type ImportKind = 'Tidp' | 'Midp' | 'AconexHistory' | 'Baseline' | 'Picklists' | 'Lists'
+
+/** A node of the folder tree (GET /api/projects/{id}/folders/tree). */
+export interface FolderTreeNode {
+  id: string
+  parentId: string | null
+  name: string
+  path: string
+  target: DataTarget
+  children: FolderTreeNode[]
+}
+
+/** A folder with its counts (GET /api/folders/{id}). */
 export interface FolderNode {
   id: string
   parentId: string | null
   name: string
   path: string
   target: DataTarget
-  children: FolderNode[]
+  driveFolderId: string | null
+  lastSyncedAt: string | null
+  childCount: number
+  fileCount: number
+}
+
+export interface FolderDetail {
+  folder: FolderNode
+  subfolders: FolderNode[]
+  files: FolderFileSummary[]
+}
+
+export interface StartImportResult {
+  importBatchId: string
+  totalRows: number
+}
+
+export interface RunImportStepResult {
+  importBatchId: string
+  processed: number
+  total: number
+  done: boolean
+  batch: ImportBatchSummary
 }
 
 export interface FolderFileSummary {
   id: string
   name: string
   kind: FileKind
+  source: FileSource
   state: ImportState
   sizeBytes: number
-  lastImportBatchId: string | null
+  driveModifiedAt: string | null
+  driveFileId: string | null
+  md5: string | null
 }
 
 export interface ImportBatchSummary {

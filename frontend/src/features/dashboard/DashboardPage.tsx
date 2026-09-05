@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { api, apiErrorMessage } from '@/shared/api/client'
-import type { FolderNode, ImportBatchSummary } from '@/shared/api/types'
+import type { FolderTreeNode, ImportBatchSummary } from '@/shared/api/types'
 import { Card, CardBody, CardHeader, StatTile } from '@/shared/ui/card'
 import { Badge } from '@/shared/ui/badge'
 import { Spinner } from '@/shared/ui/spinner'
@@ -17,7 +17,7 @@ export function DashboardPage() {
   const folders = useQuery({
     queryKey: ['folders', QPAC_PROJECT_ID],
     queryFn: async () => {
-      const { data } = await api.get<FolderNode[]>(`/api/projects/${QPAC_PROJECT_ID}/folders/tree`)
+      const { data } = await api.get<FolderTreeNode[]>(`/api/projects/${QPAC_PROJECT_ID}/folders/tree`)
       return data
     },
   })
@@ -105,6 +105,6 @@ export function DashboardPage() {
   )
 }
 
-function countFolders(nodes: FolderNode[]): number {
+function countFolders(nodes: FolderTreeNode[]): number {
   return nodes.reduce((total, node) => total + 1 + countFolders(node.children), 0)
 }

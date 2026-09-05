@@ -17,7 +17,7 @@ export interface NavItem {
 
 export const navigation: NavItem[] = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/tidps', label: 'TIDPs', icon: FolderTree, permission: Permissions.reportsView, phase: '6.2' },
+  { to: '/tidps', label: 'TIDPs', icon: FolderTree, permission: Permissions.reportsView },
   { to: '/midp', label: 'MIDP', icon: FileSpreadsheet, permission: Permissions.reportsView, phase: '6.4' },
   { to: '/baseline', label: 'Baseline', icon: CalendarRange, permission: Permissions.baselineManage, phase: '6.4' },
   { to: '/tracker', label: 'Tracker', icon: Table2, permission: Permissions.reportsView, phase: '6.4' },
