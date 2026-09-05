@@ -17,7 +17,7 @@ public class AconexHistoryImporterTests : IClassFixture<ImporterFixture>
     public AconexHistoryImporterTests(ImporterFixture fixture) => _fixture = fixture;
 
     // PLAN.md § 9.3.4 target: MIDP.xlsx!Aconex History has ~25,246 rows.
-    // Verifies row count, normalisation (BSB → XXX, spaces stripped, -PDF removed),
+    // Verifies row count, normalisation (malformed → XXX, spaces stripped, -PDF removed),
     // and that IsLatest / IsTerminated / InMidp flags are computed.
     [Fact]
     public async Task ImportsFullAconexHistory_ComputesFlagsAndNormalisation()
@@ -59,11 +59,19 @@ public class AconexHistoryImporterTests : IClassFixture<ImporterFixture>
         var totalDb = await db.AconexRevisions.CountAsync(a => a.ProjectId == _fixture.QpacProjectId);
         totalDb.Should().Be(result.RowsInserted);
 
-        // BSB / non-MIDP shapes normalise to XXX.
+        // Shapes that are not document numbers at all (report names, truncated values)
+        // normalise to XXX. Foreign-contract numbers keep their value — they simply
+        // never match a MIDP document (docs/excel-analysis.md § 6).
         var xxxCount = await db.AconexRevisions
             .CountAsync(a => a.ProjectId == _fixture.QpacProjectId
                 && a.DocNoFinal == AconexHistoryImporter.InvalidDocNoSentinel);
-        xxxCount.Should().BeGreaterThan(0, "sample contains BSB report rows that are not MIDP-shaped");
+        xxxCount.Should().BeGreaterThan(0, "the sample contains rows whose Document No is not a document number");
+
+        var foreignContract = await db.AconexRevisions
+            .CountAsync(a => a.ProjectId == _fixture.QpacProjectId
+                && a.DocNoFinal.StartsWith("QF01012-BSB-") && !a.InMidp);
+        foreignContract.Should().BeGreaterThan(0,
+            "BSB rows are structurally valid numbers that are not in the MIDP");
 
         // Spaces stripped, -PDF removed: no valid DocNoFinal should contain " " or end with "-PDF".
         var withSpaces = await db.AconexRevisions

@@ -240,8 +240,16 @@ public sealed class AconexHistoryImporter
     }
 
     // Normalise: strip ALL whitespace, remove trailing `-PDF` (case-insensitive),
-    // then validate the MIDP pattern (8 dash-separated segments, last=7 chars).
-    // Return "XXX" for anything that doesn't match so filters can exclude it.
+    // then check the document-number shape: 8 non-empty dash-separated segments.
+    // Anything else is "XXX" so filters can exclude it.
+    //
+    // The last segment is NOT length-checked. It usually reads "0ZZ0004" (7 chars),
+    // but 332 documents in the sample use 6 or 8 — e.g.
+    // QF01012-NES-C04518-CAL-CIV-00-Z00000-000004 — and 174 of those carry real
+    // Aconex history that a length rule would silently drop from every report.
+    // Foreign-contract numbers (QF01012-BSB-C02310-...) are structurally valid and
+    // normalise to themselves; they simply never match a MIDP document, which the
+    // InMidp flag records. See docs/excel-analysis.md § 6.
     public static string NormalizeDocNo(string raw)
     {
         if (string.IsNullOrWhiteSpace(raw)) return InvalidDocNoSentinel;
@@ -253,8 +261,10 @@ public sealed class AconexHistoryImporter
         }
 
         var segments = stripped.Split('-');
-        if (segments.Length != 8) return InvalidDocNoSentinel;
-        if (segments[^1].Length != 7) return InvalidDocNoSentinel;
+        if (segments.Length != 8 || segments.Any(string.IsNullOrEmpty))
+        {
+            return InvalidDocNoSentinel;
+        }
 
         return stripped;
     }

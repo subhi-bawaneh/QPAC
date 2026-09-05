@@ -7,7 +7,7 @@ namespace Dip.Infrastructure.Tests;
 // Pure normaliser — no DB, no I/O. Verifies PLAN.md § 5.1.3 edge cases:
 //   - Whitespace after hyphens stripped
 //   - Trailing -PDF (case-insensitive) removed
-//   - Shape check: 8 segments, last=7 chars, else "XXX"
+//   - Shape check: 8 non-empty segments, else "XXX"
 public class NormalizeDocNoTests
 {
     [Theory]
@@ -25,14 +25,23 @@ public class NormalizeDocNoTests
     // Multiple internal spaces / tabs mixed with hyphens.
     [InlineData("QF01012-\tNES- \tC04518- SDW-STL-00-Z00000-0ZZ0004",
                 "QF01012-NES-C04518-SDW-STL-00-Z00000-0ZZ0004")]
+    // A 6-char sequence is a real MIDP number: 240 documents in Tracker.xlsx use one
+    // and 174 of them carry Aconex history (docs/excel-analysis.md § 6).
+    [InlineData("QF01012-NES-C04518-CAL-CIV-00-Z00000-000004",
+                "QF01012-NES-C04518-CAL-CIV-00-Z00000-000004")]
+    // 8-char sequences occur too (92 documents).
+    [InlineData("QF01012-NES-C04518-SDW-STR-00-CENT01-3L668091",
+                "QF01012-NES-C04518-SDW-STR-00-CENT01-3L668091")]
+    // Foreign-contract numbers are structurally valid; they never match a MIDP
+    // document, which is what InMidp records — normalisation does not filter them.
+    [InlineData("QF01012-BSB-C02310-REP-GEN-00-Z00000-000001",
+                "QF01012-BSB-C02310-REP-GEN-00-Z00000-000001")]
     public void Normalize_ValidShapes_ReturnStrippedValue(string raw, string expected)
     {
         AconexHistoryImporter.NormalizeDocNo(raw).Should().Be(expected);
     }
 
     [Theory]
-    // BSB reports use 6-char last segment → not MIDP-shaped → XXX.
-    [InlineData("QF01012-BSB-C02310-REP-GEN-00-Z00000-000001")]
     // 7 segments (missing one) → XXX.
     [InlineData("QF01012-NES-C04518-SDW-STL-00-Z00000")]
     // Empty / whitespace.
@@ -40,6 +49,8 @@ public class NormalizeDocNoTests
     [InlineData("   ")]
     // Random text.
     [InlineData("Some Random File.pdf")]
+    // Empty segment in the middle.
+    [InlineData("QF01012-NES--SDW-STL-00-Z00000-0ZZ0004")]
     public void Normalize_InvalidShapes_ReturnXXX(string raw)
     {
         AconexHistoryImporter.NormalizeDocNo(raw).Should().Be(AconexHistoryImporter.InvalidDocNoSentinel);
