@@ -24,8 +24,8 @@ export const navigation: NavItem[] = [
   { to: '/summary', label: 'Summary', icon: LayoutDashboard, permission: Permissions.reportsView },
   { to: '/findings', label: 'Control Findings', icon: AlertTriangle, permission: Permissions.reportsView },
   { to: '/lists', label: 'Lists', icon: ListChecks, permission: Permissions.listsManage },
-  { to: '/admin/users', label: 'Users', icon: Users, permission: Permissions.usersManage, phase: '6.6' },
-  { to: '/admin/settings', label: 'Settings', icon: Settings, permission: Permissions.projectSettings, phase: '6.6' },
+  { to: '/admin/users', label: 'Users', icon: Users, permission: Permissions.usersManage },
+  { to: '/admin/settings', label: 'Settings', icon: Settings, permission: Permissions.projectSettings },
 ]
 
 export function visibleNavigation(permissions: readonly string[]): NavItem[] {

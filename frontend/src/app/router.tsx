@@ -13,6 +13,8 @@ import { MidpPage } from '@/features/midp/MidpPage'
 import { BaselinePage } from '@/features/baseline/BaselinePage'
 import { ListsPage } from '@/features/lists/ListsPage'
 import { ControlFindingsPage } from '@/features/findings/ControlFindingsPage'
+import { UsersPage } from '@/features/admin/UsersPage'
+import { SettingsPage } from '@/features/admin/SettingsPage'
 import { Spinner } from '@/shared/ui/spinner'
 
 // Recharts is ~450 kB of the bundle and only the Summary page needs it, so that
@@ -55,17 +57,11 @@ export function AppRoutes() {
           </Route>
 
           <Route element={<RequirePermission permission={Permissions.usersManage} />}>
-            <Route
-              path="admin/users"
-              element={<PlaceholderPage title="Users" phase="6.6" description="Accounts, roles and discipline scoping." />}
-            />
+            <Route path="admin/users" element={<UsersPage />} />
           </Route>
 
           <Route element={<RequirePermission permission={Permissions.projectSettings} />}>
-            <Route
-              path="admin/settings"
-              element={<PlaceholderPage title="Settings" phase="6.6" description="Project settings: schedule mode, report date and progress weights." />}
-            />
+            <Route path="admin/settings" element={<SettingsPage />} />
           </Route>
 
           <Route path="*" element={<PlaceholderPage title="Not found" phase="—" description="That page does not exist." />} />
