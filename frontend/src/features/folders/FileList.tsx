@@ -1,13 +1,16 @@
-import { FileSpreadsheet, Play, Trash2 } from 'lucide-react'
+import { ClipboardList, FileSpreadsheet, Play, Trash2 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { Button } from '@/shared/ui/button'
 import { formatDate, formatSize } from '@/shared/lib/utils'
 import type { FolderFileSummary } from '@/shared/api/types'
 import { FileKindBadge, ImportStateBadge } from './FolderBadges'
 
-export function FileList({ files, canImport, canManage, onImport, onDelete }: {
+export function FileList({ files, canImport, canManage, isDraftFolder, onImport, onDelete }: {
   files: FolderFileSummary[]
   canImport: boolean
   canManage: boolean
+  /** A Draft folder's imports land in a draft, so its files get a Review action. */
+  isDraftFolder: boolean
   onImport: (file: FolderFileSummary) => void
   onDelete: (file: FolderFileSummary) => void
 }) {
@@ -48,6 +51,16 @@ export function FileList({ files, canImport, canManage, onImport, onDelete }: {
             <td className="px-5 py-2 text-muted-foreground">{formatDate(file.driveModifiedAt)}</td>
             <td className="px-5 py-2">
               <div className="flex justify-end gap-2">
+                {isDraftFolder && file.state === 'Imported' ? (
+                  <Link
+                    to={`/drafts/${file.id}`}
+                    className="inline-flex h-8 items-center gap-2 rounded-md border border-border
+                      px-3 text-xs font-medium hover:bg-muted"
+                  >
+                    <ClipboardList className="h-3 w-3" aria-hidden />
+                    Review draft
+                  </Link>
+                ) : null}
                 {canImport ? (
                   <Button size="sm" variant="outline" onClick={() => onImport(file)}>
                     <Play className="h-3 w-3" aria-hidden />

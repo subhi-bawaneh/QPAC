@@ -6,6 +6,7 @@ import { LoginPage } from '@/features/auth/LoginPage'
 import { DashboardPage } from '@/features/dashboard/DashboardPage'
 import { PlaceholderPage } from '@/features/placeholder/PlaceholderPage'
 import { FolderExplorerPage } from '@/features/folders/FolderExplorerPage'
+import { DraftReviewPage } from '@/features/drafts/DraftReviewPage'
 
 export function AppRoutes() {
   return (
@@ -18,6 +19,7 @@ export function AppRoutes() {
 
           <Route element={<RequirePermission permission={Permissions.reportsView} />}>
             <Route path="tidps" element={<FolderExplorerPage />} />
+            <Route path="drafts/:folderFileId" element={<DraftReviewPage />} />
             <Route
               path="midp"
               element={<PlaceholderPage title="MIDP" phase="6.4" description="The master document grid with filters and export." />}

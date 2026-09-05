@@ -185,6 +185,7 @@ export function FolderExplorerPage() {
                 files={detail.data.files}
                 canImport={canImport}
                 canManage={canManage}
+                isDraftFolder={detail.data.folder.target === 'Draft'}
                 onImport={setImportFile}
                 onDelete={(file) => void onDeleteFile(file)}
               />
