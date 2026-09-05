@@ -155,13 +155,29 @@ internal static class TrackerWorkbook
             var code = Text(row.Cell(colActivityCode));
             if (string.IsNullOrEmpty(code)) continue;
 
+            // Only the two known activity types produce a baseline row — 12 rows in the
+            // sample leave the Activity column blank, and BaselineImporter skips those
+            // too rather than guessing.
+            var activity = Text(row.Cell(colActivity));
+            BaselineActivityType type;
+            if (string.Equals(activity, "Submittal", StringComparison.OrdinalIgnoreCase))
+            {
+                type = BaselineActivityType.Submittal;
+            }
+            else if (string.Equals(activity, "Approval", StringComparison.OrdinalIgnoreCase))
+            {
+                type = BaselineActivityType.Approval;
+            }
+            else
+            {
+                continue;
+            }
+
             rows.Add(new BaselineActivity
             {
                 ActivityCode = code,
                 Package = Text(row.Cell(colPackage)) ?? string.Empty,
-                Type = string.Equals(Text(row.Cell(colActivity)), "Approval", StringComparison.OrdinalIgnoreCase)
-                    ? BaselineActivityType.Approval
-                    : BaselineActivityType.Submittal,
+                Type = type,
                 Start = row.Cell(colStart).GetDateTime() ?? default,
                 Finish = row.Cell(colFinish).GetDateTime() ?? default,
             });

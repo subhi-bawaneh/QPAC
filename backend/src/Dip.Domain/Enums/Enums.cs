@@ -87,3 +87,12 @@ public enum PicklistField
     SuitabilityCode = 12,
     Scale = 13,
 }
+
+// How far a baseline package has got, from its documents (PLAN.md § 5.4.3).
+public enum PackageStatus
+{
+    Unused = 0,     // the package has no documents at all
+    Pending = 1,    // it has documents, none submitted yet
+    Partial = 2,    // some submitted
+    Submitted = 3,  // every document submitted
+}
