@@ -48,7 +48,7 @@ public class MigrationTests : IClassFixture<PostgresFixture>
         using var scope = provider.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DipDbContext>();
 
-        await db.Database.MigrateAsync();
+        await _fixture.EnsureMigratedAsync(db);
 
         var seeder = scope.ServiceProvider.GetRequiredService<IdentitySeeder>();
         await seeder.SeedAsync();
@@ -108,7 +108,7 @@ public class MigrationTests : IClassFixture<PostgresFixture>
         await using var provider = BuildProvider();
         using var scope1 = provider.CreateScope();
         var db1 = scope1.ServiceProvider.GetRequiredService<DipDbContext>();
-        await db1.Database.MigrateAsync();
+        await _fixture.EnsureMigratedAsync(db1);
 
         var seeder1 = scope1.ServiceProvider.GetRequiredService<IdentitySeeder>();
         await seeder1.SeedAsync();

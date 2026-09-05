@@ -1,4 +1,5 @@
 using Dip.Application.Abstractions;
+using Dip.Application.Documents;
 using Dip.Domain.Entities;
 using Dip.Domain.Enums;
 using Dip.Infrastructure.Persistence;
@@ -334,19 +335,10 @@ public sealed class TidpImporter
             return (DraftRowState.New, null);
         }
 
-        // Compare the parsed row against Live field-by-field. Anything differing
-        // marks it Modified.
-        var changed =
-            live.Title != parsed.Title ||
-            live.PackageName != parsed.PackageName ||
-            live.ActivityId != parsed.ActivityId ||
-            live.CorporateDiscipline != parsed.CorporateDiscipline ||
-            live.DeliveryMilestone != parsed.DeliveryMilestone ||
-            live.Scale != parsed.Scale ||
-            live.AuthoringSoftware != parsed.AuthoringSoftware ||
-            live.ExchangeFormat != parsed.ExchangeFormat;
-
-        return (changed ? DraftRowState.Modified : DraftRowState.Unchanged, live.Id);
+        // Field-by-field comparison lives in DraftDiff so the importers and the
+        // Draft editor can never drift apart on what counts as "Modified".
+        var state = DraftDiff.StateFor(DraftDiff.From(live), DocumentRowParser.ToComparable(parsed));
+        return (state, live.Id);
     }
 
     // ---------------------------------------------------------------- Tidp

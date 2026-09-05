@@ -1,4 +1,5 @@
 using Dip.Application.Abstractions;
+using Dip.Application.Documents;
 using Dip.Domain.Entities;
 using Dip.Domain.Enums;
 using Dip.Infrastructure.Persistence;
@@ -390,24 +391,21 @@ public sealed class MidpImporter
             return (DraftRowState.New, null);
         }
 
-        var changed =
-            live.Title != parsed.Title ||
-            live.PackageName != parsed.PackageName ||
-            live.ActivityId != parsed.ActivityId ||
-            live.CorporateDiscipline != parsed.CorporateDiscipline ||
-            live.DeliveryMilestone != parsed.DeliveryMilestone ||
-            live.Scale != parsed.Scale ||
-            live.AuthoringSoftware != parsed.AuthoringSoftware ||
-            live.ExchangeFormat != parsed.ExchangeFormat;
-
-        return (changed ? DraftRowState.Modified : DraftRowState.Unchanged, live.Id);
+        var state = DraftDiff.StateFor(live.Fields, DocumentRowParser.ToComparable(parsed));
+        return (state, live.Id);
     }
 
     // Projection used only for the Draft diff so we avoid loading full Document graphs.
     private sealed record LiveDocSnapshot(
         Guid Id, string DocumentNumber, string Title, string? PackageName, string? ActivityId,
         string CorporateDiscipline, DateTime? DeliveryMilestone, string? Scale,
-        string? AuthoringSoftware, string? ExchangeFormat);
+        string? AuthoringSoftware, string? ExchangeFormat)
+    {
+        // Computed in memory — EF only projects the constructor columns above.
+        public DraftComparableFields Fields => new(
+            Title, PackageName, ActivityId, CorporateDiscipline,
+            DeliveryMilestone, Scale, AuthoringSoftware, ExchangeFormat);
+    }
 
     private static void AppendDraftExchange(DocumentDraft draft, int number, DocumentRowParser.ExchangeRow? row)
     {

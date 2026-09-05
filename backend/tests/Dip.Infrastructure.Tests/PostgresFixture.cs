@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using Xunit;
 
@@ -34,6 +35,29 @@ public sealed class PostgresFixture : IAsyncLifetime
             "TEST_POSTGRES_CONNECTION env var is not set. Point it at a Neon branch or a scratch database.");
 
     public string Schema => _schema;
+
+    // EF resolves __EFMigrationsHistory against the model's default schema ("public"),
+    // while the migration script itself creates unqualified tables into the search path
+    // (our per-run schema). The applied-migrations check therefore always comes back
+    // empty and a second MigrateAsync on the same schema re-runs the whole script and
+    // fails with 42P07. Tests share one schema per class fixture, so migrate exactly once.
+    private readonly SemaphoreSlim _migrationGate = new(1, 1);
+    private bool _migrated;
+
+    public async Task EnsureMigratedAsync(DbContext db, CancellationToken ct = default)
+    {
+        await _migrationGate.WaitAsync(ct);
+        try
+        {
+            if (_migrated) return;
+            await db.Database.MigrateAsync(ct);
+            _migrated = true;
+        }
+        finally
+        {
+            _migrationGate.Release();
+        }
+    }
 
     public async Task InitializeAsync()
     {

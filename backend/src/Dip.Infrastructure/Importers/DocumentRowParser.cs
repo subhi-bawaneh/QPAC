@@ -1,4 +1,5 @@
 using Dip.Application.Abstractions;
+using Dip.Application.Documents;
 
 namespace Dip.Infrastructure.Importers;
 
@@ -104,11 +105,11 @@ internal static class DocumentRowParser
         var f03 = ReadRequired(row, col.F03);
         var f04 = ReadRequired(row, col.F04);
         var f05 = ReadRequired(row, col.F05);
-        var f06 = ReadRequired(row, col.F06).PadLeft(2, '0');
+        var f06 = DocumentNumbering.NormalizeZone(ReadRequired(row, col.F06));
         var f07 = ReadRequired(row, col.F07);
         var f08a = ReadRequired(row, col.F08A);
         var f08b = ReadRequired(row, col.F08B);
-        var f08c = ReadRequired(row, col.F08C).PadLeft(4, '0');
+        var f08c = DocumentNumbering.NormalizeSequence(ReadRequired(row, col.F08C));
 
         // Required fields blank -> skip (template rows below the last populated row).
         if (string.IsNullOrEmpty(f01) || string.IsNullOrEmpty(f04) || string.IsNullOrEmpty(f05))
@@ -116,7 +117,7 @@ internal static class DocumentRowParser
             return null;
         }
 
-        var documentNumber = $"{f01}-{f02}-{f03}-{f04}-{f05}-{f06}-{f07}-{f08a}{f08b}{f08c}";
+        var documentNumber = DocumentNumbering.Compose(f01, f02, f03, f04, f05, f06, f07, f08a, f08b, f08c);
 
         return new ParsedRow(
             DocumentNumber: documentNumber,
@@ -156,6 +157,11 @@ internal static class DocumentRowParser
         }
         return new ExchangeRow(authorValue, geoValue, nonGeoValue, durationValue, predValue, dateValue);
     }
+
+    // Projects a parsed row onto the fields DraftDiff compares against Live.
+    public static DraftComparableFields ToComparable(ParsedRow parsed) => new(
+        parsed.Title, parsed.PackageName, parsed.ActivityId, parsed.CorporateDiscipline,
+        parsed.DeliveryMilestone, parsed.Scale, parsed.AuthoringSoftware, parsed.ExchangeFormat);
 
     public static string ReadRequired(IExcelRow row, int column) =>
         column > 0 ? (row.Cell(column).GetStringOrNull()?.Trim() ?? string.Empty) : string.Empty;
