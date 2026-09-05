@@ -24,7 +24,7 @@ public sealed class AconexHistoryImporter
     private readonly IExcelReader _reader;
 
     private const int InsertChunkSize = 2000;
-    public const string InvalidDocNoSentinel = "XXX";
+    public const string InvalidDocNoSentinel = AconexRevision.InvalidDocNoSentinel;
 
     private static readonly Regex WhitespaceRegex = new(@"\s+", RegexOptions.Compiled);
     private static readonly HashSet<string> TerminalReviewStatuses = new(StringComparer.OrdinalIgnoreCase)

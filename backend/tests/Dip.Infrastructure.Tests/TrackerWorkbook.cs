@@ -108,11 +108,14 @@ internal static class TrackerWorkbook
         var colDocNo = Column(sheet, headerRow, "Document No");
         var colDocNoFinal = Column(sheet, headerRow, "Document No Final");
         var colRevision = Column(sheet, headerRow, "Revision");
+        var colTitle = Column(sheet, headerRow, "Title");
         var colStatus = Column(sheet, headerRow, "Status");
         var colReviewStatus = Column(sheet, headerRow, "Review Status");
         var colDateModified = Column(sheet, headerRow, "Date Modified");
         var colTransmittal = Column(sheet, headerRow, "Transmittal In");
         var colTerminated = Column(sheet, headerRow, "Terminated");
+        var colLatest = Column(sheet, headerRow, "Latest");
+        var colInMidp = Column(sheet, headerRow, "In MIDP");
 
         var rows = new List<AconexRevision>();
         for (var r = headerRow + 1; r <= sheet.RowCount; r++)
@@ -126,12 +129,14 @@ internal static class TrackerWorkbook
                 AconexDocNo = Text(row.Cell(colDocNo)) ?? string.Empty,
                 DocNoFinal = Text(row.Cell(colDocNoFinal)) ?? string.Empty,
                 Revision = Text(row.Cell(colRevision)) ?? string.Empty,
+                Title = Text(row.Cell(colTitle)) ?? string.Empty,
                 AconexStatus = Text(row.Cell(colStatus)) ?? string.Empty,
                 ReviewStatus = Text(row.Cell(colReviewStatus)),
                 DateModified = dateModified.Value,
                 TransmittalIn = Text(row.Cell(colTransmittal)),
-                IsTerminated = string.Equals(
-                    Text(row.Cell(colTerminated)), "TRUE", StringComparison.OrdinalIgnoreCase),
+                IsTerminated = Flag(row.Cell(colTerminated)),
+                IsLatest = Flag(row.Cell(colLatest)),
+                InMidp = Flag(row.Cell(colInMidp)),
             });
         }
         return rows;
@@ -212,6 +217,9 @@ internal static class TrackerWorkbook
         }
         throw new InvalidOperationException($"Sheet '{sheet.Name}' has no '{header}' column");
     }
+
+    private static bool Flag(IExcelCell cell) =>
+        string.Equals(Text(cell), "TRUE", StringComparison.OrdinalIgnoreCase);
 
     // Blank cells and the "0" the export writes for a missing transmittal are null.
     public static string? Text(IExcelCell cell)
