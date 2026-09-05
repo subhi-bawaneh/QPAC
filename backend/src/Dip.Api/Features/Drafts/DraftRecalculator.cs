@@ -36,7 +36,8 @@ internal static class DraftRecalculator
         Guid folderFileId,
         IReadOnlyCollection<DocumentDraft> touched,
         IEnumerable<string> previousNumbers,
-        CancellationToken ct)
+        CancellationToken ct,
+        IReadOnlySet<Guid>? ignoreLiveDocumentIds = null)
     {
         if (touched.Count == 0) return;
 
@@ -47,10 +48,12 @@ internal static class DraftRecalculator
             .ToList();
 
         var live = await db.Documents
-            .AsNoTracking()
             .Where(d => d.ProjectId == projectId && currentUpper.Contains(d.DocumentNumber.ToUpper()))
             .ToListAsync(ct);
+        // A rollback has Live rows pending deletion in the change tracker; EF still
+        // returns them from a tracking query, so the caller names them to be ignored.
         var liveByNumber = live
+            .Where(d => ignoreLiveDocumentIds is null || !ignoreLiveDocumentIds.Contains(d.Id))
             .GroupBy(d => d.DocumentNumber, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
 

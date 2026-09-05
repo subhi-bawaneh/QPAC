@@ -160,8 +160,10 @@ internal static class DocumentRowParser
 
     // Projects a parsed row onto the fields DraftDiff compares against Live.
     public static DraftComparableFields ToComparable(ParsedRow parsed) => new(
-        parsed.Title, parsed.PackageName, parsed.ActivityId, parsed.CorporateDiscipline,
-        parsed.DeliveryMilestone, parsed.Scale, parsed.AuthoringSoftware, parsed.ExchangeFormat);
+        parsed.Title, parsed.ExtractedFromModel, parsed.ScopeArea, parsed.PackageName,
+        parsed.ActivityId, parsed.ClassificationCode, parsed.CorporateDiscipline,
+        parsed.DeliveryMilestone, parsed.Scale, parsed.AuthoringSoftware, parsed.ExchangeFormat,
+        parsed.Exchange1?.DurationDays ?? 1m);
 
     public static string ReadRequired(IExcelRow row, int column) =>
         column > 0 ? (row.Cell(column).GetStringOrNull()?.Trim() ?? string.Empty) : string.Empty;

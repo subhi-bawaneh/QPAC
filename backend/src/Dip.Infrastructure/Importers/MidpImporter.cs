@@ -281,8 +281,9 @@ public sealed class MidpImporter
         var live = await _db.Documents
             .Where(d => d.ProjectId == projectId)
             .Select(d => new LiveDocSnapshot(
-                d.Id, d.DocumentNumber, d.Title, d.PackageName, d.ActivityId,
-                d.CorporateDiscipline, d.DeliveryMilestone, d.Scale, d.AuthoringSoftware, d.ExchangeFormat))
+                d.Id, d.DocumentNumber, d.Title, d.ExtractedFromModel, d.ScopeArea, d.PackageName,
+                d.ActivityId, d.ClassificationCode, d.CorporateDiscipline, d.DeliveryMilestone,
+                d.Scale, d.AuthoringSoftware, d.ExchangeFormat, d.BudgetWeight))
             .ToListAsync(ct);
         var liveByNumber = live.ToDictionary(d => d.DocumentNumber, StringComparer.OrdinalIgnoreCase);
 
@@ -397,14 +398,16 @@ public sealed class MidpImporter
 
     // Projection used only for the Draft diff so we avoid loading full Document graphs.
     private sealed record LiveDocSnapshot(
-        Guid Id, string DocumentNumber, string Title, string? PackageName, string? ActivityId,
-        string CorporateDiscipline, DateTime? DeliveryMilestone, string? Scale,
-        string? AuthoringSoftware, string? ExchangeFormat)
+        Guid Id, string DocumentNumber, string Title, string? ExtractedFromModel, string? ScopeArea,
+        string? PackageName, string? ActivityId, string? ClassificationCode, string CorporateDiscipline,
+        DateTime? DeliveryMilestone, string? Scale, string? AuthoringSoftware, string? ExchangeFormat,
+        decimal BudgetWeight)
     {
         // Computed in memory — EF only projects the constructor columns above.
         public DraftComparableFields Fields => new(
-            Title, PackageName, ActivityId, CorporateDiscipline,
-            DeliveryMilestone, Scale, AuthoringSoftware, ExchangeFormat);
+            Title, ExtractedFromModel, ScopeArea, PackageName, ActivityId, ClassificationCode,
+            CorporateDiscipline, DeliveryMilestone, Scale, AuthoringSoftware, ExchangeFormat,
+            BudgetWeight);
     }
 
     private static void AppendDraftExchange(DocumentDraft draft, int number, DocumentRowParser.ExchangeRow? row)
