@@ -25,3 +25,6 @@ secrets.json
 # Local SQLite (if any dev testing)
 *.db
 *.db-journal
+
+# Locally uploaded workbooks (LocalFileStorage); never source-controlled.
+src/Dip.Api/App_Data/

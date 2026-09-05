@@ -1,0 +1,33 @@
+import {
+  FolderTree, LayoutDashboard, ListChecks, Table2, FileSpreadsheet,
+  AlertTriangle, CalendarRange, Settings, Users,
+  type LucideIcon,
+} from 'lucide-react'
+import { Permissions, type Permission } from '@/shared/auth/permissions'
+
+export interface NavItem {
+  to: string
+  label: string
+  icon: LucideIcon
+  /** Hidden entirely when the signed-in user lacks this (PLAN.md § 8). */
+  permission?: Permission
+  /** Set until the phase that builds the page lands. */
+  phase?: string
+}
+
+export const navigation: NavItem[] = [
+  { to: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { to: '/tidps', label: 'TIDPs', icon: FolderTree, permission: Permissions.reportsView, phase: '6.2' },
+  { to: '/midp', label: 'MIDP', icon: FileSpreadsheet, permission: Permissions.reportsView, phase: '6.4' },
+  { to: '/baseline', label: 'Baseline', icon: CalendarRange, permission: Permissions.baselineManage, phase: '6.4' },
+  { to: '/tracker', label: 'Tracker', icon: Table2, permission: Permissions.reportsView, phase: '6.4' },
+  { to: '/summary', label: 'Summary', icon: LayoutDashboard, permission: Permissions.reportsView, phase: '6.5' },
+  { to: '/findings', label: 'Control Findings', icon: AlertTriangle, permission: Permissions.reportsView, phase: '6.5' },
+  { to: '/lists', label: 'Lists', icon: ListChecks, permission: Permissions.listsManage, phase: '6.4' },
+  { to: '/admin/users', label: 'Users', icon: Users, permission: Permissions.usersManage, phase: '6.6' },
+  { to: '/admin/settings', label: 'Settings', icon: Settings, permission: Permissions.projectSettings, phase: '6.6' },
+]
+
+export function visibleNavigation(permissions: readonly string[]): NavItem[] {
+  return navigation.filter((item) => !item.permission || permissions.includes(item.permission))
+}
