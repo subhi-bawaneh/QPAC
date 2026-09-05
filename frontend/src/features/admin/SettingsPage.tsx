@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Button } from '@/shared/ui/button'
 import { Card, CardBody, CardHeader } from '@/shared/ui/card'
 import { Input } from '@/shared/ui/input'
-import { Select } from '@/shared/ui/select'
+import { SelectItem, SimpleSelect } from '@/shared/ui/select'
 import { Spinner } from '@/shared/ui/spinner'
 import { Badge } from '@/shared/ui/badge'
 import { apiErrorMessage } from '@/shared/api/client'
@@ -110,14 +110,14 @@ export function SettingsPage() {
               <div className="grid gap-4 sm:grid-cols-3">
                 <label className="space-y-1 text-sm">
                   <span className="text-xs text-muted-foreground">Schedule mode</span>
-                  <Select
-                    aria-label="Schedule mode"
+                  <SimpleSelect
+                    label="Schedule mode"
                     value={form.scheduleMode}
-                    onChange={(event) => set('scheduleMode', event.target.value)}
+                    onValueChange={(value) => set('scheduleMode', value)}
                   >
-                    <option value="Baseline">Baseline</option>
-                    <option value="WorkingPlan">Working Plan</option>
-                  </Select>
+                    <SelectItem value="Baseline">Baseline</SelectItem>
+                    <SelectItem value="WorkingPlan">Working Plan</SelectItem>
+                  </SimpleSelect>
                 </label>
 
                 <label className="space-y-1 text-sm">

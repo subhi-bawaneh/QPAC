@@ -52,29 +52,27 @@ export function FileList({ files, canImport, canManage, isDraftFolder, onImport,
             <td className="px-5 py-2">
               <div className="flex justify-end gap-2">
                 {isDraftFolder && file.state === 'Imported' ? (
-                  <Link
-                    to={`/drafts/${file.id}`}
-                    className="inline-flex h-8 items-center gap-2 rounded-md border border-border
-                      px-3 text-xs font-medium hover:bg-muted"
-                  >
-                    <ClipboardList className="h-3 w-3" aria-hidden />
-                    Review draft
-                  </Link>
+                  <Button variant="outline" size="sm" asChild>
+                    <Link to={`/drafts/${file.id}`}>
+                      <ClipboardList aria-hidden />
+                      Review draft
+                    </Link>
+                  </Button>
                 ) : null}
                 {canImport ? (
                   <Button size="sm" variant="outline" onClick={() => onImport(file)}>
-                    <Play className="h-3 w-3" aria-hidden />
+                    <Play aria-hidden />
                     Import
                   </Button>
                 ) : null}
                 {canManage ? (
                   <Button
-                    size="sm"
+                    size="icon-sm"
                     variant="ghost"
                     aria-label={`Delete ${file.name}`}
                     onClick={() => onDelete(file)}
                   >
-                    <Trash2 className="h-3 w-3" aria-hidden />
+                    <Trash2 aria-hidden />
                   </Button>
                 ) : null}
               </div>

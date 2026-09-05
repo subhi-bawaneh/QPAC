@@ -93,6 +93,16 @@ export function useDeleteFile(projectId: string) {
   })
 }
 
+export function useDeleteFolder(projectId: string) {
+  const invalidate = useFolderInvalidation(projectId)
+  return useMutation({
+    mutationFn: async (input: { folderId: string; parentId: string | null }) => {
+      await api.delete(`/api/folders/${input.folderId}`)
+    },
+    onSuccess: (_result, input) => invalidate(input.parentId ?? undefined),
+  })
+}
+
 export function useSyncFromDrive(projectId: string) {
   const invalidate = useFolderInvalidation(projectId)
   return useMutation({

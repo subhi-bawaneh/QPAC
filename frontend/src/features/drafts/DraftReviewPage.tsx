@@ -4,9 +4,10 @@ import { ArrowLeft, Pencil, Upload } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
 import { Card, CardBody } from '@/shared/ui/card'
 import { Input } from '@/shared/ui/input'
-import { Select } from '@/shared/ui/select'
+import { SelectItem, SimpleSelect } from '@/shared/ui/select'
 import { Spinner } from '@/shared/ui/spinner'
 import { Badge } from '@/shared/ui/badge'
+import { Checkbox } from '@/shared/ui/checkbox'
 import { apiErrorMessage } from '@/shared/api/client'
 import { formatDate } from '@/shared/lib/utils'
 import { useAuth } from '@/shared/auth/useAuth'
@@ -18,6 +19,8 @@ import { DraftRowEditor } from './DraftRowEditor'
 import { PromoteDialog } from './PromoteDialog'
 import { BulkEditDialog } from './BulkEditDialog'
 
+// Radix forbids an empty-string item value, so "no filter" needs a sentinel.
+const ALL = '__all__'
 const PAGE_SIZE = 25
 const states: DraftRowState[] = ['New', 'Modified', 'Unchanged', 'Conflict', 'Deleted']
 
@@ -101,25 +104,25 @@ export function DraftReviewPage() {
             }}
           />
 
-          <Select
+          <SimpleSelect
             className="h-8 w-40"
-            aria-label="Filter by state"
-            value={state}
-            onChange={(event) => {
-              setState(event.target.value as DraftRowState | '')
+            label="Filter by state"
+            value={state || ALL}
+            onValueChange={(value) => {
+              setState(value === ALL ? '' : (value as DraftRowState))
               setPage(1)
             }}
           >
-            <option value="">All states</option>
-            {states.map((value) => <option key={value} value={value}>{value}</option>)}
-          </Select>
+            <SelectItem value={ALL}>All states</SelectItem>
+            {states.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}
+          </SimpleSelect>
 
           <label className="flex items-center gap-2 text-sm text-muted-foreground">
-            <input
-              type="checkbox"
+            <Checkbox
               checked={duplicatesOnly}
-              onChange={(event) => {
-                setDuplicatesOnly(event.target.checked)
+              aria-label="Duplicates only"
+              onCheckedChange={(checked) => {
+                setDuplicatesOnly(checked === true)
                 setPage(1)
               }}
             />
@@ -160,11 +163,10 @@ export function DraftReviewPage() {
                 {rows.map((row) => (
                   <tr key={row.id} className="border-b border-border last:border-0">
                     <td className="px-3 py-2">
-                      <input
-                        type="checkbox"
+                      <Checkbox
                         aria-label={`Select ${row.documentNumber}`}
                         checked={selected.has(row.id)}
-                        onChange={() => toggle(row.id)}
+                        onCheckedChange={() => toggle(row.id)}
                       />
                     </td>
                     <td className="px-3 py-2 font-mono text-xs">

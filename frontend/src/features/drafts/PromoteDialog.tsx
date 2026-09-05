@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
-import { Dialog } from '@/shared/ui/dialog'
+import { Dialog, DialogFooter } from '@/shared/ui/dialog'
+import { Checkbox } from '@/shared/ui/checkbox'
 import { Button } from '@/shared/ui/button'
 import { Spinner } from '@/shared/ui/spinner'
 import { Tabs, TabPanel, type TabItem } from '@/shared/ui/tabs'
@@ -84,12 +85,12 @@ export function PromoteDialog({ open, onClose, folderFileId }: {
             </div>
 
             {diff.data.deleted > 0 ? (
-              <label className="flex items-start gap-2 rounded-md bg-muted px-3 py-2 text-sm">
-                <input
-                  type="checkbox"
+              <label className="flex items-start gap-3 rounded-md border bg-muted/50 px-3 py-2.5 text-sm">
+                <Checkbox
                   className="mt-0.5"
                   checked={deleteMissing}
-                  onChange={(event) => setDeleteMissing(event.target.checked)}
+                  aria-label="Delete missing Live rows"
+                  onCheckedChange={(checked) => setDeleteMissing(checked === true)}
                 />
                 <span>
                   Also delete the {diff.data.deleted.toLocaleString('en-GB')} Live row(s) this file
@@ -131,7 +132,7 @@ export function PromoteDialog({ open, onClose, folderFileId }: {
           </p>
         ) : null}
 
-        <div className="flex justify-end gap-2">
+        <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={promote.isPending || rollback.isPending}>
             {result ? 'Close' : 'Cancel'}
           </Button>
@@ -150,7 +151,7 @@ export function PromoteDialog({ open, onClose, folderFileId }: {
               {promote.isPending ? 'Promoting…' : 'Promote'}
             </Button>
           ) : null}
-        </div>
+        </DialogFooter>
       </div>
     </Dialog>
   )

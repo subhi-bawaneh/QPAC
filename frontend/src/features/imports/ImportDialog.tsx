@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Dialog } from '@/shared/ui/dialog'
 import { Button } from '@/shared/ui/button'
-import { Select } from '@/shared/ui/select'
+import { SelectItem, SimpleSelect } from '@/shared/ui/select'
 import { Progress } from '@/shared/ui/progress'
 import type { DataTarget, FolderFileSummary, ImportKind } from '@/shared/api/types'
 import { useImportRunner } from './api'
@@ -40,16 +40,16 @@ export function ImportDialog({ open, onClose, file, folderId, folderTarget, proj
       <div className="space-y-4">
         <div className="space-y-1">
           <label className="text-sm font-medium" htmlFor="import-kind">Workbook kind</label>
-          <Select
-            id="import-kind"
+          <SimpleSelect
+            label="Workbook kind"
             value={kind}
             disabled={isRunning || finished}
-            onChange={(event) => setKind(event.target.value as ImportKind)}
+            onValueChange={(value) => setKind(value as ImportKind)}
           >
             {importKinds.map((option) => (
-              <option key={option.value} value={option.value}>{option.label}</option>
+              <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
             ))}
-          </Select>
+          </SimpleSelect>
         </div>
 
         {progress ? (

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Card, CardBody } from '@/shared/ui/card'
 import { Input } from '@/shared/ui/input'
-import { Select } from '@/shared/ui/select'
+import { SelectItem, SimpleSelect } from '@/shared/ui/select'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import { Spinner } from '@/shared/ui/spinner'
@@ -11,6 +11,8 @@ import { QPAC_PROJECT_ID } from '@/shared/api/project'
 import { formatDate, formatNumber } from '@/shared/lib/utils'
 import type { BaselineActivityRow, BaselineActivityType, PagedResult } from '@/shared/api/types'
 
+// Radix forbids an empty-string item value, so "no filter" needs a sentinel.
+const ALL = '__all__'
 const PAGE_SIZE = 25
 
 export function BaselinePage() {
@@ -63,33 +65,33 @@ export function BaselinePage() {
             }}
           />
 
-          <Select
+          <SimpleSelect
             className="h-8 w-40"
-            aria-label="Filter by activity type"
-            value={type}
-            onChange={(event) => {
-              setType(event.target.value as BaselineActivityType | '')
+            label="Filter by activity type"
+            value={type || ALL}
+            onValueChange={(value) => {
+              setType(value === ALL ? '' : (value as BaselineActivityType))
               setPage(1)
             }}
           >
-            <option value="">Both types</option>
-            <option value="Submittal">Submittal</option>
-            <option value="Approval">Approval</option>
-          </Select>
+            <SelectItem value={ALL}>Both types</SelectItem>
+            <SelectItem value="Submittal">Submittal</SelectItem>
+            <SelectItem value="Approval">Approval</SelectItem>
+          </SimpleSelect>
 
-          <Select
+          <SimpleSelect
             className="h-8 w-40"
-            aria-label="Filter by usage"
-            value={used}
-            onChange={(event) => {
-              setUsed(event.target.value as '' | 'used' | 'unused')
+            label="Filter by usage"
+            value={used || ALL}
+            onValueChange={(value) => {
+              setUsed(value === ALL ? '' : (value as 'used' | 'unused'))
               setPage(1)
             }}
           >
-            <option value="">Used and unused</option>
-            <option value="used">Used only</option>
-            <option value="unused">Unused only</option>
-          </Select>
+            <SelectItem value={ALL}>Used and unused</SelectItem>
+            <SelectItem value="used">Used only</SelectItem>
+            <SelectItem value="unused">Unused only</SelectItem>
+          </SimpleSelect>
 
           <span className="ml-auto text-xs text-muted-foreground">
             {activities.data ? `${formatNumber(activities.data.total)} activities` : ''}

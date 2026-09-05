@@ -3,7 +3,7 @@ import { Download } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
 import { Card, CardBody } from '@/shared/ui/card'
 import { Input } from '@/shared/ui/input'
-import { Select } from '@/shared/ui/select'
+import { SelectItem, SimpleSelect } from '@/shared/ui/select'
 import { Spinner } from '@/shared/ui/spinner'
 import { apiErrorMessage } from '@/shared/api/client'
 import { useAuth } from '@/shared/auth/useAuth'
@@ -12,6 +12,8 @@ import type { TrackerRow, UnifiedStatus } from '@/shared/api/types'
 import { downloadReport, useTrackerRows } from './api'
 import { DocumentDrawer } from './DocumentDrawer'
 
+// Radix forbids an empty-string item value, so "no filter" needs a sentinel.
+const ALL = '__all__'
 const PAGE_SIZE = 25
 const statuses: UnifiedStatus[] = ['Approved', 'Rejected', 'UnderReview', 'Withdrawn']
 
@@ -100,34 +102,36 @@ export function DocumentTablePage({ title, description, columns, exportKind, sho
             }}
           />
 
-          <Select
+          <SimpleSelect
             className="h-8 w-44"
-            aria-label="Filter by discipline"
-            value={discipline}
-            onChange={(event) => {
-              setDiscipline(event.target.value)
+            label="Filter by discipline"
+            value={discipline || ALL}
+            onValueChange={(value) => {
+              setDiscipline(value === ALL ? '' : value)
               setPage(1)
             }}
           >
-            <option value="">All disciplines</option>
-            {disciplines.map((value) => <option key={value} value={value}>{value}</option>)}
-          </Select>
+            <SelectItem value={ALL}>All disciplines</SelectItem>
+            {disciplines.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}
+          </SimpleSelect>
 
           {showStatusFilter ? (
-            <Select
+            <SimpleSelect
               className="h-8 w-40"
-              aria-label="Filter by status"
-              value={status}
-              onChange={(event) => {
-                setStatus(event.target.value as UnifiedStatus | '')
+              label="Filter by status"
+              value={status || ALL}
+              onValueChange={(value) => {
+                setStatus(value === ALL ? '' : (value as UnifiedStatus))
                 setPage(1)
               }}
             >
-              <option value="">All statuses</option>
+              <SelectItem value={ALL}>All statuses</SelectItem>
               {statuses.map((value) => (
-                <option key={value} value={value}>{value === 'UnderReview' ? 'Under Review' : value}</option>
+                <SelectItem key={value} value={value}>
+                  {value === 'UnderReview' ? 'Under Review' : value}
+                </SelectItem>
               ))}
-            </Select>
+            </SimpleSelect>
           ) : null}
 
           <span className="ml-auto text-xs text-muted-foreground">
