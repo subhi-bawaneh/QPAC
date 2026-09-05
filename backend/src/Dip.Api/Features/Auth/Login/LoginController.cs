@@ -1,9 +1,11 @@
 using Dip.Api.Common;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace Dip.Api.Features.Auth.Login;
 
 [Route("api/auth/login")]
+[EnableRateLimiting(DependencyInjection.AuthRateLimitPolicy)]
 public sealed class LoginController : ApiControllerBase
 {
     public sealed record LoginRequest(string Email, string Password);

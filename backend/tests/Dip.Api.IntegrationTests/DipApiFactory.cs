@@ -52,6 +52,11 @@ public sealed class DipApiFactory : WebApplicationFactory<Program>, IAsyncLifeti
             ["Seed:AdminPassword"] = SuperAdminPassword,
             // Tests own the DB lifecycle via InitializeAsync — the app must not migrate.
             ["Startup:SkipMigration"] = "true",
+            // Every test in the collection logs in through the same in-memory client, so
+            // they all land in one rate-limit partition and would exhaust the production
+            // window between them. AuthRateLimitTests boots its own host with a small
+            // limit to prove the 429; here the limiter must never be the thing that fails.
+            ["RateLimit:AuthPermitPerWindow"] = "100000",
         }));
 
         return base.CreateHost(builder);

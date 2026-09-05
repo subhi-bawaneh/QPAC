@@ -1,10 +1,15 @@
 using System.Reflection;
 using System.Text;
+using System.Threading.RateLimiting;
 using Dip.Api.Common;
 using Dip.Application.Abstractions;
 using Dip.Application.Behaviors;
+using Dip.Api.Health;
 using FluentValidation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Hosting;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 
@@ -12,6 +17,9 @@ namespace Dip.Api;
 
 public static class DependencyInjection
 {
+    /// Applied to the login and refresh endpoints with [EnableRateLimiting].
+    public const string AuthRateLimitPolicy = "auth";
+
     public static IServiceCollection AddApi(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddControllers()
@@ -25,7 +33,12 @@ public static class DependencyInjection
         services.AddHttpContextAccessor();
         services.AddExceptionHandler<ProblemDetailsExceptionHandler>();
         services.AddProblemDetails();
-        services.AddHealthChecks();
+        // /health is the liveness probe an uptime monitor polls: process + database.
+        // Drive is tagged "external" and only reported on /health/detail, so a Google
+        // outage never makes this API look down.
+        services.AddHealthChecks()
+            .AddCheck<DatabaseHealthCheck>(DatabaseHealthCheck.Name, tags: ["core"])
+            .AddCheck<DriveHealthCheck>(DriveHealthCheck.Name, tags: ["external"]);
 
         services.AddSwaggerGen(options =>
         {
@@ -84,19 +97,68 @@ public static class DependencyInjection
         var corsOrigins = (configuration["Cors:Origins"] ?? string.Empty)
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
+        // Outside Development a missing Cors:Origins used to fall back to "any origin",
+        // which turns one forgotten Plesk variable into an API every website may call.
+        // Fail at startup instead: a boot error is found immediately, an open CORS
+        // policy is not.
+        var isDevelopment = string.Equals(
+            configuration["ASPNETCORE_ENVIRONMENT"] ?? Environments.Development,
+            Environments.Development,
+            StringComparison.OrdinalIgnoreCase);
+
+        if (corsOrigins.Length == 0 && !isDevelopment)
+        {
+            throw new InvalidOperationException(
+                "Cors:Origins must list the frontend origins outside Development, "
+                + "e.g. Cors__Origins=https://dip.vercel.app");
+        }
+
+        // Vercel gives every preview deployment its own hostname, and WithOrigins has no
+        // wildcards, so previews are matched by suffix when the operator opts in.
+        var previewSuffix = configuration["Cors:PreviewOriginSuffix"];
+
         services.AddCors(options =>
         {
             options.AddDefaultPolicy(policy =>
             {
-                if (corsOrigins.Length > 0)
+                if (corsOrigins.Length == 0)
                 {
-                    policy.WithOrigins(corsOrigins).AllowAnyHeader().AllowAnyMethod().AllowCredentials();
-                }
-                else
-                {
+                    // Development only, by the guard above.
                     policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod();
+                    return;
+                }
+
+                policy.WithOrigins(corsOrigins).AllowAnyHeader().AllowAnyMethod().AllowCredentials();
+
+                if (!string.IsNullOrWhiteSpace(previewSuffix))
+                {
+                    policy.SetIsOriginAllowed(origin =>
+                        corsOrigins.Contains(origin, StringComparer.Ordinal)
+                        || (Uri.TryCreate(origin, UriKind.Absolute, out var uri)
+                            && uri.Scheme == Uri.UriSchemeHttps
+                            && uri.Host.EndsWith(previewSuffix, StringComparison.OrdinalIgnoreCase)));
                 }
             });
+        });
+
+        // Auth is the one unauthenticated surface, so it is the one worth limiting:
+        // a fixed window per client address, generous enough that a person retyping a
+        // password never meets it.
+        var authPermitPerWindow = configuration.GetValue("RateLimit:AuthPermitPerWindow", 20);
+        var authWindowSeconds = configuration.GetValue("RateLimit:AuthWindowSeconds", 60);
+
+        services.AddRateLimiter(options =>
+        {
+            options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+            options.AddPolicy(AuthRateLimitPolicy, context =>
+                RateLimitPartition.GetFixedWindowLimiter(
+                    context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                    _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = authPermitPerWindow,
+                        Window = TimeSpan.FromSeconds(authWindowSeconds),
+                        QueueLimit = 0,
+                    }));
         });
 
         services.AddScoped<IDispatcher, Dispatcher.Dispatcher>();

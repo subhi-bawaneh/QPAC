@@ -1,0 +1,70 @@
+name: backend-publish
+
+# Builds, tests and packages the API as a zip an operator can drop into Plesk.
+# The integration tests need a real Postgres, so one runs as a service container —
+# the suite skips them when TEST_POSTGRES_CONNECTION is unset, and a green run that
+# skipped everything would be worthless.
+on:
+  push:
+    branches: [main, master]
+    paths: ['backend/**', '.github/workflows/backend-publish.yml']
+  pull_request:
+    paths: ['backend/**', '.github/workflows/backend-publish.yml']
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: dip_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      TEST_POSTGRES_CONNECTION: Host=localhost;Port=5432;Database=dip_ci;Username=postgres;Password=postgres
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore backend/Dip.sln
+
+      # Warnings are errors here, as they are locally (Directory.Build.props).
+      - name: Build
+        run: dotnet build backend/Dip.sln --no-restore -c Release
+
+      - name: Test
+        run: dotnet test backend/Dip.sln --no-build -c Release --logger "trx;LogFileName=test-results.trx"
+
+      - name: Publish
+        run: dotnet publish backend/src/Dip.Api/Dip.Api.csproj -c Release -o publish
+
+      - name: Package
+        run: cd publish && zip -r ../dip-api.zip .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dip-api
+          path: dip-api.zip
+          retention-days: 30
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: '**/*.trx'
+          retention-days: 7

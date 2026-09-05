@@ -3,6 +3,7 @@ using Dip.Infrastructure;
 using Dip.Infrastructure.Persistence;
 using Dip.Infrastructure.Seeding;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Serilog;
 
 // Bootstrap logger — set once per process. WebApplicationFactory reboots the
@@ -56,10 +57,21 @@ try
     }
 
     app.UseCors();
+    app.UseRateLimiter();
     app.UseAuthentication();
     app.UseAuthorization();
 
-    app.MapHealthChecks("/health");
+    // Liveness for the uptime monitor: process + database, nothing external.
+    app.MapHealthChecks("/health", new HealthCheckOptions
+    {
+        Predicate = registration => registration.Tags.Contains("core"),
+    });
+
+    // Everything, including Drive reachability, as JSON for an operator.
+    app.MapHealthChecks("/health/detail", new HealthCheckOptions
+    {
+        ResponseWriter = WriteHealthReportAsync,
+    });
     app.MapControllers();
 
     Log.Information("DIP API starting");
@@ -73,6 +85,26 @@ catch (Exception ex) when (ex is not HostAbortedException)
 finally
 {
     Log.CloseAndFlush();
+}
+
+// Per-check JSON so an operator can see which dependency is unhappy and why.
+static Task WriteHealthReportAsync(HttpContext context, Microsoft.Extensions.Diagnostics.HealthChecks.HealthReport report)
+{
+    context.Response.ContentType = "application/json";
+
+    return context.Response.WriteAsJsonAsync(new
+    {
+        status = report.Status.ToString(),
+        totalDurationMs = report.TotalDuration.TotalMilliseconds,
+        checks = report.Entries.Select(entry => new
+        {
+            name = entry.Key,
+            status = entry.Value.Status.ToString(),
+            description = entry.Value.Description,
+            durationMs = entry.Value.Duration.TotalMilliseconds,
+            tags = entry.Value.Tags,
+        }),
+    });
 }
 
 // Expose Program for WebApplicationFactory in integration tests.

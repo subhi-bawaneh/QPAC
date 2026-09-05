@@ -1,9 +1,11 @@
 using Dip.Api.Common;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace Dip.Api.Features.Auth.Refresh;
 
 [Route("api/auth/refresh")]
+[EnableRateLimiting(DependencyInjection.AuthRateLimitPolicy)]
 public sealed class RefreshController : ApiControllerBase
 {
     public sealed record RefreshRequest(string RefreshToken);
