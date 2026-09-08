@@ -181,3 +181,54 @@ Passed! - Failed: 0, Passed:  62, Skipped: 0, Total:  62 - Dip.Api.IntegrationTe
 ### Known gaps carried into R3
 - `GetPicklists` / `GetStatusMappings` still return soft-deleted rows and the CRUD slices do not
   exist yet; `PicklistImporter` still reads only the nine numbering lists.
+
+---
+
+## R3 — Lists backend
+
+### What changed
+- **`PicklistImporter` rewritten** to locate every list by its **row-5 header text** rather than by
+  the FIELD group labels, so all 17 lists of § 7 come in from one pass: the nine numbering lists
+  (`Ab. 01`…`Ab. 08B` with their description columns) and the eight value lists
+  (`Authoring Software`, `File/Exchange Format`, `Scope Area`, `Code`+`Status`, `Scale`,
+  `Classification ID`+`Classification`, `Corporate Discipline`, `Author`). `8C - Sequence Number`
+  holds prose and is simply not in the map. Values are trimmed (Scope Area and Zone carry trailing
+  spaces) and soft-deleted codes are skipped, counted and reported (R9).
+- **Soft-delete filters** on every read: `GetPicklists`, `GetStatusMappings`, `ReportDataLoader`,
+  `RecalculationService`, `GetTrackerDocument`, `GetFileWorkbook`, `SetFolderCompany` and
+  `ListsImporter` (which now skips a deleted mapping the way the picklist importer does).
+- **Picklist slices**: `CreatePicklistItem` (201, or 200 with `restored: true` when it revives a
+  soft-deleted row), `UpdatePicklistItem` (409 on a live sibling's code), `DeletePicklistItem` (soft,
+  409 when a company folder names the item as its author), `RestorePicklistItem` (409 if the code was
+  taken meanwhile), `ReorderPicklist` (`SortOrder` 1..n).
+- **Status-mapping slices**: `CreateStatusMapping`, `UpdateStatusMapping`, `DeleteStatusMapping`,
+  `RestoreStatusMapping`, all with the same soft-delete semantics.
+- **`GetPicklists` returns a group per `PicklistField`** even when empty, so the Lists page can render
+  one tab per list, and items now carry `field`, `isDeleted` and `deletedAt`.
+
+### Verified against the sample (`samples/PickLists.xlsx`, `Pick_Lists`)
+Every count in § 7 matched exactly on the first run, asserted per list with its first code and
+description in `PicklistImporterTests`:
+Project 1 · Originator 1 · Contract 1 · DocType 94 · Discipline 98 · Zone 29 · Building 12 ·
+DrawingType 10 · Level 16 · AuthoringSoftware 13 · ExchangeFormat 26 · ScopeArea 31 ·
+SuitabilityCode 14 · Scale 16 · Classification 10 · CorporateDiscipline 9 · Author 12.
+
+### Deviations
+13. **The FIELD-label pass was replaced, not kept alongside a second pass.** § 5.8 says to keep the
+    FIELD-label scan and add a second pass for the single-column lists. In the standalone workbook
+    row 4 labels the serial-number group once (`FIELD 08 - SERIAL NUMBER`) rather than as
+    `FIELD 08A` / `FIELD 08B`, so the old scan could not find Drawing Type or Level at all and § 7's
+    counts of 10 and 16 were unreachable through it. Locating every list by its row-5 header is one
+    rule instead of two and covers all 17 lists; the counts above confirm it.
+14. **`DeletePicklistItem` refuses to delete an item a company folder points at** (409). `Folders.AuthorId`
+    is a restricted FK, so a soft delete would otherwise leave a folder naming a hidden author. Not in
+    the plan; the alternative was a folder whose author cannot be displayed.
+
+### Test summary
+```
+Passed! - Failed: 0, Passed:   3, Skipped: 0, Total:   3 - Dip.Domain.Tests.dll
+Passed! - Failed: 0, Passed: 131, Skipped: 0, Total: 131 - Dip.Engine.Tests.dll
+Passed! - Failed: 0, Passed:  44, Skipped: 0, Total:  44 - Dip.Infrastructure.Tests.dll
+Passed! - Failed: 0, Passed:  69, Skipped: 0, Total:  69 - Dip.Api.IntegrationTests.dll
+```
+`dotnet build`: 0 warnings, 0 errors.

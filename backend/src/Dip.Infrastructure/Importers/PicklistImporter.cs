@@ -6,13 +6,18 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Dip.Infrastructure.Importers;
 
-// Reads `Picklists` sheet from TIDP.xlsx / MIDP.xlsx (or the standalone
-// PickLists.xlsx). The sheet is laid out horizontally: each FIELD occupies
-// two columns (Code, Description); FIELD labels sit two rows above the data.
+// Reads the `Pick_Lists` sheet (also named `Picklists` inside TIDP/MIDP workbooks).
+// The sheet is laid out horizontally: group labels in row 4, column headers in row 5,
+// data from row 6 down. Two kinds of list live side by side —
+//   * numbering lists, a code column plus a description column ("Ab. 05" / "5 - Discipline")
+//   * value lists, a single column ("Authoring Software", "Author", …)
 //
-// The reader locates each FIELD header row by searching for the labels
-// (FIELD 01 - PROJECT CODE, FIELD 04 - DOCUMENT TYPES, FIELD 05 - DISCIPLINE, …)
-// so it works regardless of small row shifts between workbooks.
+// Everything is located by its row-5 header text rather than by a column number, so
+// the reader survives columns being inserted, and the `8C - Sequence Number` column —
+// which holds prose, not codes — is simply not in the map.
+//
+// Soft-deleted codes are never resurrected (refactor-plan § 3 R9): they are counted as
+// skipped and listed in the warnings.
 public sealed class PicklistImporter
 {
     private readonly DipDbContext _db;
@@ -24,94 +29,111 @@ public sealed class PicklistImporter
         _reader = reader;
     }
 
-    // FIELD label prefix -> matching PicklistField enum.
-    // Only fields the project actively uses are included; unknowns are skipped
-    // with a warning so the user notices.
-    private static readonly (string Prefix, PicklistField Field)[] FieldMap =
-    [
-        ("FIELD 01",  PicklistField.Project),
-        ("FIELD 02",  PicklistField.Originator),
-        ("FIELD 03",  PicklistField.Contract),
-        ("FIELD 04",  PicklistField.DocType),
-        ("FIELD 05",  PicklistField.Discipline),
-        ("FIELD 06",  PicklistField.Zone),
-        ("FIELD 07",  PicklistField.Building),
-        ("FIELD 08A", PicklistField.DrawingType),
-        ("FIELD 08B", PicklistField.Level),
-    ];
+    // Header text of the code column -> the list it feeds, and the header the
+    // description column must carry for the pair to be read as code + description.
+    private sealed record ListSpec(PicklistField Field, string? DescriptionHeader);
+
+    private static readonly IReadOnlyDictionary<string, ListSpec> Lists =
+        new Dictionary<string, ListSpec>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Ab. 01"] = new(PicklistField.Project, "1 - Project Name"),
+            ["Ab. 02"] = new(PicklistField.Originator, "2 - Originator Name"),
+            ["Ab. 03"] = new(PicklistField.Contract, "3 - Contract Reference"),
+            ["Ab. 04"] = new(PicklistField.DocType, "4 - Document Type"),
+            ["Ab. 05"] = new(PicklistField.Discipline, "5 - Discipline"),
+            ["Ab. 06"] = new(PicklistField.Zone, "6 - Area/Zone"),
+            ["Ab. 07"] = new(PicklistField.Building, "7 - Venue/Building"),
+            ["Ab. 08A"] = new(PicklistField.DrawingType, "8A - Drawing Type"),
+            ["Ab. 08B"] = new(PicklistField.Level, "8B - Level"),
+            ["Authoring Software"] = new(PicklistField.AuthoringSoftware, null),
+            ["File/Exchange Format"] = new(PicklistField.ExchangeFormat, null),
+            ["Scope Area"] = new(PicklistField.ScopeArea, null),
+            ["Code"] = new(PicklistField.SuitabilityCode, "Status"),
+            ["Scale"] = new(PicklistField.Scale, null),
+            ["Classification ID"] = new(PicklistField.Classification, "Classification"),
+            ["Corporate Discipline"] = new(PicklistField.CorporateDiscipline, null),
+            ["Author"] = new(PicklistField.Author, null),
+        };
 
     public async Task<ImportResult> ImportAsync(Guid projectId, Stream content, CancellationToken ct)
     {
         using var wb = _reader.Open(content);
-        // Different files use different casings for the same sheet:
-        //   TIDP-STL / MIDP -> "Picklists"
-        //   Standalone      -> "Pick_Lists"
         IExcelSheet? sheet = null;
-        foreach (var candidate in new[] { "Picklists", "PickLists", "Pick_Lists" })
+        foreach (var candidate in new[] { "Pick_Lists", "Picklists", "PickLists" })
         {
             if (wb.TryGetSheet(candidate, out sheet) && sheet is not null) break;
         }
         if (sheet is null)
         {
-            return new ImportResult(0, 0, 0, 0, new[] { "No 'Picklists' sheet in workbook" });
+            return new ImportResult(0, 0, 0, 0, new[] { "No 'Pick_Lists' sheet in workbook" });
         }
 
-        // Find the row that holds the FIELD labels (contains "FIELD 01" anywhere).
+        // The group labels ("FIELD 01 - PROJECT CODE") sit one row above the column
+        // headers, and the data starts one row below those.
         var labelRow = sheet.FindRowContainingAnywhere("FIELD 01")
-            ?? throw new InvalidOperationException("Cannot locate 'FIELD 01' label in Picklists sheet");
-        // Data begins two rows below the labels (labels, sub-header abbreviations, then data).
+            ?? throw new InvalidOperationException("Cannot locate 'FIELD 01' label in the Picklists sheet");
+        var headerRow = labelRow + 1;
         var firstDataRow = labelRow + 2;
 
-        var warnings = new List<string>();
-        var inserted = 0;
-        var updated = 0;
-        var read = 0;
-
-        // Load existing items in one shot for fast lookup.
         var existingRows = await _db.PicklistItems
             .Where(p => p.ProjectId == projectId)
             .ToListAsync(ct);
-        var existing = existingRows.ToDictionary(p => (p.Field, p.Code), StringComparerTuple.OrdinalIgnoreCase);
+        var existing = existingRows.ToDictionary(
+            p => (p.Field, p.Code), StringComparerTuple.OrdinalIgnoreCase);
 
-        // Scan the label row for each FIELD; the value column is the same column
-        // as the label; the description column is the immediate next.
+        var warnings = new List<string>();
+        var read = 0;
+        var inserted = 0;
+        var updated = 0;
+        var skipped = 0;
+
+        var header = sheet.Row(headerRow);
         var lastCol = sheet.ColumnCount;
-        var labelHeader = sheet.Row(labelRow);
+        var lastRow = sheet.RowCount;
+        var consumed = new HashSet<int>();
+
         for (var col = 1; col <= lastCol; col++)
         {
-            var label = labelHeader.Cell(col).GetStringOrNull()?.Trim();
-            if (string.IsNullOrEmpty(label))
+            if (consumed.Contains(col)) continue;
+
+            var title = header.Cell(col).GetStringOrNull()?.Trim();
+            if (string.IsNullOrEmpty(title) || !Lists.TryGetValue(title, out var spec)) continue;
+
+            var descCol = 0;
+            if (spec.DescriptionHeader is not null)
             {
-                continue;
+                var next = header.Cell(col + 1).GetStringOrNull()?.Trim();
+                if (string.Equals(next, spec.DescriptionHeader, StringComparison.OrdinalIgnoreCase))
+                {
+                    descCol = col + 1;
+                    consumed.Add(descCol);
+                }
             }
 
-            var mapping = FieldMap.FirstOrDefault(m => label.StartsWith(m.Prefix, StringComparison.OrdinalIgnoreCase));
-            if (mapping.Prefix is null)
-            {
-                continue;
-            }
-
-            var codeCol = col;
-            var descCol = col + 1;
-            var lastRow = sheet.RowCount;
             var sortOrder = 0;
-
             for (var r = firstDataRow; r <= lastRow; r++)
             {
-                var codeCell = sheet.Row(r).Cell(codeCol);
-                var descCell = sheet.Row(r).Cell(descCol);
-                var code = codeCell.GetStringOrNull()?.Trim();
-                var description = descCell.GetStringOrNull()?.Trim() ?? string.Empty;
-                if (string.IsNullOrEmpty(code))
-                {
-                    continue;
-                }
+                // Scope Area and Zone carry trailing spaces in the sheet.
+                var code = sheet.Row(r).Cell(col).GetStringOrNull()?.Trim();
+                if (string.IsNullOrEmpty(code)) continue;
+
+                var description = descCol == 0
+                    ? string.Empty
+                    : sheet.Row(r).Cell(descCol).GetStringOrNull()?.Trim() ?? string.Empty;
 
                 read++;
                 sortOrder++;
 
-                if (existing.TryGetValue((mapping.Field, code), out var current))
+                if (existing.TryGetValue((spec.Field, code), out var current))
                 {
+                    if (current.IsDeleted)
+                    {
+                        // The operator removed this code; a re-import must not bring it back.
+                        skipped++;
+                        warnings.Add($"{spec.Field} '{code}' is deleted and was skipped");
+                        continue;
+                    }
+
                     if (current.Description != description || current.SortOrder != sortOrder)
                     {
                         current.Description = description;
@@ -121,36 +143,38 @@ public sealed class PicklistImporter
                 }
                 else
                 {
-                    _db.PicklistItems.Add(new PicklistItem
+                    var item = new PicklistItem
                     {
                         ProjectId = projectId,
-                        Field = mapping.Field,
+                        Field = spec.Field,
                         Code = code,
                         Description = description,
                         SortOrder = sortOrder,
-                    });
+                    };
+                    _db.PicklistItems.Add(item);
+                    existing[(spec.Field, code)] = item;
                     inserted++;
                 }
             }
         }
 
         await _db.SaveChangesAsync(ct);
-        return new ImportResult(read, inserted, updated, 0, warnings);
+        return new ImportResult(read, inserted, updated, skipped, warnings);
     }
 }
 
 // Custom equality comparer for tuple keys so lookups ignore case on Code.
 internal static class StringComparerTuple
 {
-    public static IEqualityComparer<(Dip.Domain.Enums.PicklistField Field, string Code)> OrdinalIgnoreCase { get; } =
+    public static IEqualityComparer<(PicklistField Field, string Code)> OrdinalIgnoreCase { get; } =
         new PicklistKeyComparer();
 
-    private sealed class PicklistKeyComparer : IEqualityComparer<(Dip.Domain.Enums.PicklistField Field, string Code)>
+    private sealed class PicklistKeyComparer : IEqualityComparer<(PicklistField Field, string Code)>
     {
-        public bool Equals((Dip.Domain.Enums.PicklistField Field, string Code) x, (Dip.Domain.Enums.PicklistField Field, string Code) y) =>
+        public bool Equals((PicklistField Field, string Code) x, (PicklistField Field, string Code) y) =>
             x.Field == y.Field && string.Equals(x.Code, y.Code, StringComparison.OrdinalIgnoreCase);
 
-        public int GetHashCode((Dip.Domain.Enums.PicklistField Field, string Code) obj) =>
+        public int GetHashCode((PicklistField Field, string Code) obj) =>
             HashCode.Combine((int)obj.Field, StringComparer.OrdinalIgnoreCase.GetHashCode(obj.Code));
     }
 }

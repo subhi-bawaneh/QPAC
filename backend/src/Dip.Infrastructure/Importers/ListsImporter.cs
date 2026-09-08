@@ -75,6 +75,15 @@ public sealed class ListsImporter
 
             if (existing.TryGetValue(aconex, out var current))
             {
+                if (current.IsDeleted)
+                {
+                    // The operator removed this mapping; a re-import must not bring
+                    // it back (refactor-plan § 3 R9).
+                    skipped++;
+                    warnings.Add($"'{aconex}' is deleted and was skipped");
+                    continue;
+                }
+
                 if (current.Status != unified.Value)
                 {
                     current.Status = unified.Value;

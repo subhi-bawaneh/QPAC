@@ -15,9 +15,10 @@ public sealed class GetStatusMappingsHandler
         GetStatusMappingsQuery query, CancellationToken ct) =>
         await _db.StatusMappings
             .AsNoTracking()
-            .Where(m => m.ProjectId == query.ProjectId)
+            .Where(m => m.ProjectId == query.ProjectId && (query.IncludeDeleted || !m.IsDeleted))
             .OrderBy(m => m.IsLegacy)
             .ThenBy(m => m.AconexStatus)
-            .Select(m => new StatusMappingDto(m.Id, m.AconexStatus, m.Status, m.IsLegacy))
+            .Select(m => new StatusMappingDto(
+                m.Id, m.AconexStatus, m.Status, m.IsLegacy, m.IsDeleted, m.DeletedAt))
             .ToListAsync(ct);
 }

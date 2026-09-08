@@ -12,9 +12,6 @@ public sealed class GetStatusMappingsController : ApiControllerBase
     [ProducesResponseType(typeof(IReadOnlyList<StatusMappingDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<IReadOnlyList<StatusMappingDto>>> Get(
-        Guid projectId, CancellationToken ct)
-    {
-        var result = await Dispatcher.Query(new GetStatusMappingsQuery(projectId), ct);
-        return Ok(result);
-    }
+        Guid projectId, [FromQuery] bool includeDeleted = false, CancellationToken ct = default) =>
+        Ok(await Dispatcher.Query(new GetStatusMappingsQuery(projectId, includeDeleted), ct));
 }

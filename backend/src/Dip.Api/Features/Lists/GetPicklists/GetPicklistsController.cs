@@ -12,9 +12,6 @@ public sealed class GetPicklistsController : ApiControllerBase
     [ProducesResponseType(typeof(IReadOnlyList<PicklistGroupDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<IReadOnlyList<PicklistGroupDto>>> Get(
-        Guid projectId, CancellationToken ct)
-    {
-        var result = await Dispatcher.Query(new GetPicklistsQuery(projectId), ct);
-        return Ok(result);
-    }
+        Guid projectId, [FromQuery] bool includeDeleted = false, CancellationToken ct = default) =>
+        Ok(await Dispatcher.Query(new GetPicklistsQuery(projectId, includeDeleted), ct));
 }

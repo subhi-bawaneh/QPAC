@@ -1,4 +1,5 @@
 using Dip.Application.Abstractions;
+using Dip.Domain.Enums;
 using Dip.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -16,17 +17,19 @@ public sealed class GetPicklistsHandler
     {
         var items = await _db.PicklistItems
             .AsNoTracking()
-            .Where(p => p.ProjectId == query.ProjectId)
+            .Where(p => p.ProjectId == query.ProjectId && (query.IncludeDeleted || !p.IsDeleted))
             .OrderBy(p => p.Field)
             .ThenBy(p => p.SortOrder)
             .ThenBy(p => p.Code)
             .ToListAsync(ct);
 
-        return items
-            .GroupBy(p => p.Field)
-            .Select(g => new PicklistGroupDto(
-                g.Key,
-                g.Select(p => new PicklistItemDto(p.Id, p.Code, p.Description, p.SortOrder)).ToList()))
+        var byField = items.ToLookup(p => p.Field);
+
+        // Every field appears, empty or not: the page renders one tab per list.
+        return Enum.GetValues<PicklistField>()
+            .Select(field => new PicklistGroupDto(
+                field,
+                byField[field].Select(PicklistItemDto.From).ToList()))
             .ToList();
     }
 }
