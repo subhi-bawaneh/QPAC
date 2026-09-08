@@ -89,6 +89,8 @@ public sealed class FileImportService
             .FirstOrDefaultAsync(b => b.FolderFileId == folderFileId, ct);
         if (blob is null)
         {
+            await FailAsync(folder.ProjectId, file.Id, file.FolderId, batchId: null,
+                "The workbook has no stored content; sync it from Drive or upload it again", ct);
             return;
         }
 

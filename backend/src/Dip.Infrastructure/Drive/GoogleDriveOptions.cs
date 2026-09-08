@@ -7,6 +7,10 @@ public sealed class GoogleDriveOptions
     public string ApiKey { get; set; } = string.Empty;
     public string RootFolderId { get; set; } = string.Empty;
 
+    // Development only: a local copy of the Drive tree served through
+    // LocalMirrorDriveClient instead of the Google API. Empty in every other environment.
+    public string LocalMirrorPath { get; set; } = string.Empty;
+
     // Files.list default page size is 100; 1000 is the API max.
     public int PageSize { get; set; } = 1000;
 

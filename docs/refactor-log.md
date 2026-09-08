@@ -481,3 +481,80 @@ Tests       117 passed (117)
    `RunAllAsync` loads it once, so the cost only lands on the admin fallback endpoint.
 6. **`DriveSyncWorker` polls every project in the database.** Single-project today; a real
    multi-tenant deployment would want per-project scheduling.
+
+---
+
+## Owner review (2026-09-08, after R7) — findings and fixes
+
+Reviewed by the planning session against `docs/refactor-plan.md` § 3, § 5, § 6, § 7 and § 14, with
+two independent read-only reviews (backend R1–R3, frontend R4–R7) and a live run of the pipeline
+against Neon through a local mirror of the Drive tree.
+
+### Why the screens were empty
+1. **No Drive configuration on this machine.** `GoogleDrive__ApiKey` / `__RootFolderId` were never set
+   in user-secrets or the environment, so the poller logged "polling is disabled" and Neon held seed
+   rows only. Production needs both values in Plesk; locally the new `GoogleDrive:LocalMirrorPath`
+   (Development only) serves the checked-out `Qpac_1/` folder through the same read-only
+   `IDriveClient` contract (`Dip.Infrastructure/Drive/LocalMirrorDriveClient.cs`).
+2. **Drive folders defaulted to the Live layer** (`DriveSyncService.UpsertRootAsync`) while Drive
+   content imports into Draft (R3), so the effective set — and with it Tracker, Summary, Control
+   Findings and the workbook viewer — was empty even after a successful poll. Drive-created folders
+   now start in **Draft** (D3: Drive is the Draft layer's source); `DriveSyncServiceTests.DriveRoot_IsTargetedAtDraft`.
+3. **Picklists were not seeded** (§ 9.2 left them to the first poll). `SeedPicklists.cs` now carries
+   all 17 lists (393 rows, generated from `samples/PickLists.xlsx`) and `IdentitySeeder` inserts the
+   ones missing by `(Field, Code)`; a later workbook import upserts the same keys.
+
+### Product corrections (owner's clarification of D8)
+- The **Summary page is restored** at `/summary` (Overview · Corporate · Baseline · EVM) and
+  **Control Findings** at `/findings`; both are back in the sidebar.
+- A **new Dashboard** at `/` shows the Engineering Tracker aggregations as an overview: key figures
+  (documents, submitted, approved with quality, under review, completed vs planned, SPI), delivery
+  S-curve, progress by discipline and by company (`features/reports/ProgressChart.tsx`, with a table
+  view), baseline package status, control-findings counts, SPI by discipline, and the Drive/import
+  pipeline state (last sync, next poll, queued imports, companies by layer, recent imports).
+  Shared report hooks and charts moved to `features/reports/`.
+
+### Backend fixes from the review
+- `DriveSyncWorker`/`WorkerState`: atomic `TryStartSync`, a real run-again flag for "Sync now"
+  during a run (the timer loop and the trigger loop could previously start two concurrent walks),
+  and `TriggerDriveSync` reports `queued = false` when polling is disabled.
+- `DriveSyncService`: a folder that fails no longer poisons the rest of the walk (its pending
+  entities are detached); file row and blob commit in one `SaveChanges` (a row with an md5 but no
+  blob could never be re-downloaded nor imported).
+- `FileImportService`: a file without stored content is marked `Failed` with a message instead of
+  being silently skipped and re-queued forever.
+- Control Findings report 1 ("delivered but unplanned") decides MIDP membership against the
+  **effective set** (`Features/Reports/ReportData.cs: UnplannedRevisions`) instead of the
+  `AconexRevision.InMidp` flag, which was computed at import time against Live only and reported
+  every revision of a Draft-layer company as unplanned.
+- `ImportWorker` enqueues a recalculation for every project at startup, so snapshots catch up with
+  targets flipped while the process was down.
+- Test fixtures **throw** without `TEST_POSTGRES_CONNECTION` (§ 11.3) instead of passing vacuously.
+- `appsettings.json` no longer ships a default admin password.
+- New tests: `NewerDriveContentWithADifferentMd5_ReplacesTheStoredCopy` (R2 positive path),
+  `DriveRoot_IsTargetedAtDraft`.
+
+### Frontend fixes from the review
+- Hub events invalidate the query cache **app-wide** (`SyncHubProvider`), not only on the TIDPs page;
+  the initial hub connection is retried with back-off when the API is cold.
+- Lists is readable with `reports.view` (mutations still need `lists.manage`).
+- Convert-to-Live previews the **whole subtree**'s files (`useSubtreeFiles`, `subtreeFolderIds`),
+  matching what the backend converts.
+- Context-menu "New folder" creates inside the right-clicked folder.
+- A failed cell save in the workbook grid no longer surfaces as an unhandled rejection.
+- Dead code removed (`downloadUrl`, unused badges, `isEditable`, `ImportKind`, duplicate
+  `usePromoteDiff`); toast timers cleared on unmount; stale "no background workers" comment fixed.
+- New tests: `syncHub.test.ts`, `tree.test.ts`, `DashboardPage.test.tsx` (new page),
+  `SummaryPage.test.tsx`; navigation/sidebar tests updated for the restored pages.
+
+### Left as recorded (minor, not changed)
+- `ConvertToLive` with the same document number in two TIDPs of one company fails as a whole with
+  500 instead of a 409 (atomicity is right; the error surface is not).
+- `GetFolderHandler` issues several queries per subfolder for `hasNewerDraft`; noticeable on Neon
+  latency for wide folders.
+- `WorkbookDto` has no `lastImportedAt`, so the viewer's status bar cannot show it.
+- Tracker workbook is parsed once per routed sheet (four times); CPU only.
+- `ImportBatch.Kind` is `AconexHistory` for the Tracker workbook although the batch also imports
+  Baseline and Lists.
+- Corporate Summary from an imported MIDP is 15,724 rows against the sheet's 15,883 (excel-analysis
+  finding 22); pre-existing and worth the owner's look.

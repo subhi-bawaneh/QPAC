@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Dip.Application.Authorization;
 using Dip.Domain.Entities;
+using Dip.Domain.Enums;
 using Dip.Infrastructure.Identity;
 using Dip.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Identity;
@@ -41,6 +42,7 @@ public sealed class IdentitySeeder
         var project = await SeedProjectAsync(ct);
         await SeedDisciplinesAsync(project.Id, ct);
         await SeedStatusMappingsAsync(project.Id, ct);
+        await SeedPicklistsAsync(project.Id, ct);
         await SeedSuperAdminAsync();
 
         await _db.SaveChangesAsync(ct);
@@ -148,6 +150,40 @@ public sealed class IdentitySeeder
                 AconexStatus = aconex,
                 Status = unified,
                 IsLegacy = isLegacy,
+            });
+        }
+    }
+
+    // The dropdown values every screen needs, so a fresh database is usable before the
+    // first Drive poll. Rows already present (including soft-deleted ones, which an
+    // operator removed on purpose) are left alone; the Picklists workbook upserts the
+    // same (Field, Code) keys later.
+    private async Task SeedPicklistsAsync(Guid projectId, CancellationToken ct)
+    {
+        var existingKeys = await _db.PicklistItems
+            .Where(p => p.ProjectId == projectId)
+            .Select(p => new { p.Field, p.Code })
+            .ToListAsync(ct);
+        var existing = existingKeys
+            .Select(k => (k.Field, k.Code.ToUpperInvariant()))
+            .ToHashSet();
+
+        var sortOrder = new Dictionary<PicklistField, int>();
+        foreach (var (field, code, description) in SeedPicklists.Items)
+        {
+            sortOrder[field] = sortOrder.GetValueOrDefault(field) + 1;
+            if (existing.Contains((field, code.ToUpperInvariant())))
+            {
+                continue;
+            }
+
+            _db.PicklistItems.Add(new PicklistItem
+            {
+                ProjectId = projectId,
+                Field = field,
+                Code = code,
+                Description = description,
+                SortOrder = sortOrder[field],
             });
         }
     }

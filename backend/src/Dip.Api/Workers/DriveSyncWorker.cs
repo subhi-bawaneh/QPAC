@@ -37,8 +37,10 @@ public sealed class DriveSyncWorker : BackgroundService
         {
             _logger.LogInformation(
                 "GoogleDrive:RootFolderId is not set — Drive polling is disabled; uploads still import");
+            _state.PollingEnabled = false;
             return;
         }
+        _state.PollingEnabled = true;
 
         var timerTask = _options.PollHours > 0
             ? RunTimerAsync(stoppingToken)
@@ -111,44 +113,48 @@ public sealed class DriveSyncWorker : BackgroundService
 
     private async Task SyncProjectAsync(Guid projectId, CancellationToken ct)
     {
-        if (_state.IsSyncRunning)
+        if (!_state.TryStartSync(DateTime.UtcNow))
         {
-            // A concurrent walk would fight over the same rows; the caller is told
-            // the run is already in flight and the next poll picks up the changes.
+            // A walk is in flight; it re-runs once it finishes rather than racing it.
+            _state.RequestRunAgain();
             return;
         }
 
-        _state.SyncStarted(DateTime.UtcNow);
-        string? error = null;
+        do
+        {
+            var error = await RunOnceAsync(projectId, ct);
+            _state.SyncFinished(DateTime.UtcNow, error);
+        }
+        while (!ct.IsCancellationRequested && _state.ConsumeRunAgain() && _state.TryStartSync(DateTime.UtcNow));
+    }
+
+    private async Task<string?> RunOnceAsync(Guid projectId, CancellationToken ct)
+    {
         try
         {
             using var scope = _scopes.CreateScope();
             var sync = scope.ServiceProvider.GetRequiredService<DriveSyncService>();
             var result = await sync.SyncProjectAsync(projectId, ct);
-            error = result.Error;
+            return result.Error;
         }
         catch (OperationCanceledException)
         {
-            error = "cancelled";
+            return "cancelled";
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Drive sync failed for project {ProjectId}", projectId);
-            error = ex.Message;
             try
             {
                 using var scope = _scopes.CreateScope();
                 await scope.ServiceProvider.GetRequiredService<ISyncNotifier>()
-                    .SyncFinishedAsync(projectId, 0, 0, error);
+                    .SyncFinishedAsync(projectId, 0, 0, ex.Message);
             }
             catch (Exception notifyError)
             {
                 _logger.LogWarning(notifyError, "Could not publish the sync failure");
             }
-        }
-        finally
-        {
-            _state.SyncFinished(DateTime.UtcNow, error);
+            return ex.Message;
         }
     }
 }

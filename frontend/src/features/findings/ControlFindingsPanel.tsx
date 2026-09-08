@@ -1,78 +1,24 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
 import { Download } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
 import { Card, CardBody } from '@/shared/ui/card'
 import { Spinner } from '@/shared/ui/spinner'
 import { Tabs, TabPanel } from '@/shared/ui/tabs'
 import { Badge } from '@/shared/ui/badge'
-import { api, apiErrorMessage } from '@/shared/api/client'
-import { QPAC_PROJECT_ID } from '@/shared/api/project'
+import { apiErrorMessage } from '@/shared/api/client'
 import { formatDate, formatNumber } from '@/shared/lib/utils'
 import { useAuth } from '@/shared/auth/useAuth'
 import { Permissions } from '@/shared/auth/permissions'
 import { downloadReport } from '@/features/tracker/api'
 import { StatusBadge } from '@/features/tracker/StatusBadge'
-import type { UnifiedStatus } from '@/shared/api/types'
-
-interface DeliveredButUnplanned {
-  documentNumber: string
-  revision: string
-  title: string
-  aconexStatus: string
-  status: UnifiedStatus | null
-  dateModified: string
-}
-
-interface UnplannedDocument {
-  type: string
-  discipline: string
-  documentNumber: string
-  title: string
-  plannedStart: string | null
-  author: string | null
-}
-
-interface UnusedPackage {
-  package: string
-  activityCode: string
-  originalDuration: number
-  finish: string
-  documentCount: number
-}
-
-interface DuplicateDocument {
-  type: string
-  discipline: string
-  documentNumber: string
-  title: string
-  plannedStart: string | null
-  author: string | null
-  count: number
-}
-
-interface ControlFindings {
-  deliveredButUnplanned: DeliveredButUnplanned[]
-  unplanned: UnplannedDocument[]
-  unusedPackages: UnusedPackage[]
-  duplicates: DuplicateDocument[]
-}
+import { useControlFindings } from '@/features/reports/api'
 
 export function ControlFindingsPanel() {
   const [tab, setTab] = useState('delivered')
   const [exportError, setExportError] = useState<string | null>(null)
   const { can } = useAuth()
 
-  const findings = useQuery({
-    queryKey: ['findings', QPAC_PROJECT_ID],
-    queryFn: async () => {
-      const { data } = await api.get<{
-        findings: ControlFindings
-        recalculationRequired: boolean
-      }>(`/api/projects/${QPAC_PROJECT_ID}/control-findings`)
-      return data
-    },
-  })
+  const findings = useControlFindings()
 
   const data = findings.data?.findings
 

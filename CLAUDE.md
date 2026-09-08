@@ -33,5 +33,7 @@ cd backend && dotnet build && dotnet test
 dotnet ef migrations add <Name> -p src/Dip.Infrastructure -s src/Dip.Api
 dotnet ef database update      -p src/Dip.Infrastructure -s src/Dip.Api
 dotnet run --project src/Dip.Api
+# Local dev without a Google API key: serve the checked-out Qpac_1/ folder as "Drive" (Development only)
+GoogleDrive__LocalMirrorPath=$PWD/../Qpac_1 GoogleDrive__StartupDelaySeconds=3 dotnet run --project src/Dip.Api
 cd frontend && npm i && npm run dev && npm run gen:api
 ```

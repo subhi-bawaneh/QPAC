@@ -1,46 +1,77 @@
-import { useState } from 'react'
-import { RefreshCw } from 'lucide-react'
+import { AlertTriangle, ArrowRight, Cloud, RefreshCw } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { Button } from '@/shared/ui/button'
 import { Card, CardBody, CardHeader, StatTile } from '@/shared/ui/card'
-import { Spinner } from '@/shared/ui/spinner'
-import { Tabs, TabPanel } from '@/shared/ui/tabs'
 import { Badge } from '@/shared/ui/badge'
+import { Spinner } from '@/shared/ui/spinner'
 import { apiErrorMessage } from '@/shared/api/client'
+import { QPAC_PROJECT_ID } from '@/shared/api/project'
 import { formatDate, formatNumber } from '@/shared/lib/utils'
 import { useAuth } from '@/shared/auth/useAuth'
 import { Permissions } from '@/shared/auth/permissions'
-import { ControlFindingsPanel } from './ControlFindingsPanel'
-import { SCurveChart } from './SCurveChart'
-import { SpiChart } from './SpiChart'
-import { spiLabel, spiTone } from './chartTheme'
+import type { ImportBatchSummary } from '@/shared/api/types'
+import { collectCompanies } from './companies'
+import { useDriveStatus, useFolderTree } from '@/features/explorer/api'
+import { SCurveChart } from '@/features/reports/SCurveChart'
+import { SpiChart } from '@/features/reports/SpiChart'
+import { ProgressChart } from '@/features/reports/ProgressChart'
+import { spiLabel, spiTone } from '@/features/reports/chartTheme'
 import {
-  useBaselineSummary, useCorporateSummary, useEvmSummary, useRecalculate,
-  type EvmRow, type SummaryGroup,
-} from './api'
+  useBaselineSummary, useControlFindings, useCorporateSummary, useEvmSummary,
+  useRecalculate, useRecentImports,
+} from '@/features/reports/api'
 
-const percent = (value: number | null) =>
-  value === null ? '—' : `${(value * 100).toFixed(1)}%`
+const percent = (value: number | null | undefined) =>
+  value === null || value === undefined ? '—' : `${(value * 100).toFixed(1)}%`
 
+const ratio = (part: number, whole: number) => (whole > 0 ? part / whole : null)
+
+/**
+ * The landing overview: the Engineering Tracker's aggregations (Corporate Summary,
+ * Baseline Summary, Control Findings, SPI) computed over the effective document set,
+ * plus the state of the Drive-to-database pipeline that feeds them. The detailed
+ * tables stay on the Summary and Control Findings pages.
+ */
 export function DashboardPage() {
-  const [tab, setTab] = useState('overview')
   const { can } = useAuth()
 
   const corporate = useCorporateSummary()
   const baseline = useBaselineSummary()
   const evm = useEvmSummary()
+  const findings = useControlFindings()
+  const drive = useDriveStatus(QPAC_PROJECT_ID)
+  const imports = useRecentImports()
+  const tree = useFolderTree(QPAC_PROJECT_ID)
   const recalculate = useRecalculate()
 
+  const summary = corporate.data?.summary
+  const total = summary?.total
+  const spi = evm.data?.summary.total.schedulePerformanceIndex ?? null
+  const tone = spiTone(spi)
+  const badgeTone = { good: 'success', warning: 'warning', critical: 'danger', none: 'neutral' } as const
+
+  const findingCounts = findings.data
+    ? [
+        { key: 'delivered', label: 'Delivered but unplanned', count: findings.data.findings.deliveredButUnplanned.length },
+        { key: 'unplanned', label: 'Unplanned documents', count: findings.data.findings.unplanned.length },
+        { key: 'packages', label: 'Unused packages', count: findings.data.findings.unusedPackages.length },
+        { key: 'duplicates', label: 'Duplicate numbers', count: findings.data.findings.duplicates.length },
+      ]
+    : null
+  const findingsTotal = findingCounts?.reduce((sum, item) => sum + item.count, 0) ?? null
+
+  const companies = tree.data ? collectCompanies(tree.data) : null
   const stale = corporate.data?.recalculationRequired ?? false
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">Dashboard</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {corporate.data
-              ? `Reported as at ${formatDate(corporate.data.summary.reportDate)}.`
-              : 'Progress, quality and schedule performance across the project.'}
+            {summary
+              ? `Engineering Tracker figures as at ${formatDate(summary.reportDate)}, week of ${formatDate(summary.currentWeek)}.`
+              : 'Progress, quality and schedule across every targeted company.'}
           </p>
         </div>
 
@@ -59,237 +90,232 @@ export function DashboardPage() {
         </p>
       ) : null}
 
-      {recalculate.isError ? (
+      {corporate.isError ? (
         <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {apiErrorMessage(recalculate.error)}
+          {apiErrorMessage(corporate.error)}
         </p>
       ) : null}
 
-      <Tabs
-        active={tab}
-        onChange={setTab}
-        items={[
-          { id: 'overview', label: 'Overview' },
-          { id: 'corporate', label: 'Corporate' },
-          { id: 'baseline', label: 'Baseline' },
-          { id: 'findings', label: 'Control Findings' },
-          { id: 'evm', label: 'EVM' },
-        ]}
-      />
+      {corporate.isPending ? <Spinner label="Loading the tracker figures…" /> : null}
 
-      <TabPanel id="overview" active={tab}>
-        {corporate.isPending ? <Spinner /> : null}
-        {corporate.isError ? (
-          <p className="text-sm text-destructive">{apiErrorMessage(corporate.error)}</p>
-        ) : null}
+      {total ? (
+        <section aria-label="Key figures" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+          <StatTile label="Documents" value={formatNumber(total.total)} hint={`${formatNumber(total.planned)} planned to date`} />
+          <StatTile label="Submitted" value={formatNumber(total.submitted)} hint={percent(ratio(total.submitted, total.total))} />
+          <StatTile label="Approved" value={formatNumber(total.approved)} hint={`Quality ${percent(total.quality)}`} />
+          <StatTile label="Under review" value={formatNumber(total.underReview)} hint={`${formatNumber(total.rejected)} rejected`} />
+          <StatTile label="Completed" value={percent(total.completedPercent)} hint={`Planned ${percent(total.plannedPercent)}`} />
+          <StatTile
+            label="Schedule (SPI)"
+            value={spi === null ? '—' : spi.toFixed(2)}
+            hint={spiLabel[tone]}
+          />
+        </section>
+      ) : null}
 
-        {corporate.data ? (
-          <div className="space-y-4">
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <StatTile label="Documents" value={formatNumber(corporate.data.summary.total.total)} />
-              <StatTile label="Submitted" value={formatNumber(corporate.data.summary.total.submitted)}
-                hint={percent(corporate.data.summary.total.submitted / Math.max(corporate.data.summary.total.total, 1))} />
-              <StatTile label="Approved" value={formatNumber(corporate.data.summary.total.approved)}
-                hint={`Quality ${percent(corporate.data.summary.total.quality)}`} />
-              <StatTile label="Completed" value={percent(corporate.data.summary.total.completedPercent)}
-                hint={`Planned ${percent(corporate.data.summary.total.plannedPercent)}`} />
+      <div className="grid gap-4 xl:grid-cols-[2fr_1fr]">
+        <Card>
+          <CardHeader title="Delivery curve" description="Cumulative planned, submitted and approved documents by week." />
+          <CardBody>
+            {summary ? (
+              <SCurveChart weeks={summary.weeks} currentWeek={summary.currentWeek} />
+            ) : (
+              <p className="text-sm text-muted-foreground">Nothing imported yet.</p>
+            )}
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader
+            title="Data pipeline"
+            description="Google Drive is polled and every changed workbook is imported on its own."
+            action={
+              <Button variant="outline" size="sm" asChild>
+                <Link to="/tidps">
+                  TIDPs
+                  <ArrowRight className="h-4 w-4" aria-hidden />
+                </Link>
+              </Button>
+            }
+          />
+          <CardBody className="space-y-3 text-sm">
+            <div className="flex items-center gap-2">
+              <Cloud className="h-4 w-4 text-muted-foreground" aria-hidden />
+              {drive.data?.isRunning ? (
+                <Badge tone="info">Sync running</Badge>
+              ) : drive.data?.lastRunError ? (
+                <Badge tone="danger">Last sync failed</Badge>
+              ) : drive.data?.lastRunFinishedAt ? (
+                <Badge tone="success">Drive in sync</Badge>
+              ) : (
+                <Badge tone="neutral">No sync yet</Badge>
+              )}
             </div>
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+              <dt className="text-muted-foreground">Last sync</dt>
+              <dd>{formatDateTime(drive.data?.lastRunFinishedAt)}</dd>
+              <dt className="text-muted-foreground">Next poll</dt>
+              <dd>{formatDateTime(drive.data?.nextRunAt)}</dd>
+              <dt className="text-muted-foreground">Queued imports</dt>
+              <dd className="tabular-nums">{formatNumber(drive.data?.queuedImports ?? null)}</dd>
+              <dt className="text-muted-foreground">Companies</dt>
+              <dd className="tabular-nums">
+                {companies
+                  ? `${companies.length} (${companies.filter((c) => c.target === 'Live').length} in the system, ${companies.filter((c) => c.target === 'Draft').length} in Drive)`
+                  : '—'}
+              </dd>
+            </dl>
+            {drive.data?.lastRunError ? (
+              <p className="text-xs text-destructive">{drive.data.lastRunError}</p>
+            ) : null}
 
-            <Card>
-              <CardHeader title="Delivery curve" description="Cumulative planned, submitted and approved." />
-              <CardBody>
-                <SCurveChart
-                  weeks={corporate.data.summary.weeks}
-                  currentWeek={corporate.data.summary.currentWeek}
-                />
-              </CardBody>
-            </Card>
-          </div>
-        ) : null}
-      </TabPanel>
-
-      <TabPanel id="corporate" active={tab}>
-        {corporate.data ? (
-          <div className="space-y-4">
-            <GroupTable
-              title="By discipline"
-              rows={[corporate.data.summary.total, ...corporate.data.summary.disciplines]}
-            />
-            <GroupTable title="By author" rows={corporate.data.summary.authors} />
-          </div>
-        ) : <Spinner />}
-      </TabPanel>
-
-      <TabPanel id="baseline" active={tab}>
-        {baseline.isPending ? <Spinner /> : null}
-        {baseline.isError ? (
-          <p className="text-sm text-destructive">{apiErrorMessage(baseline.error)}</p>
-        ) : null}
-
-        {baseline.data ? (
-          <div className="space-y-4">
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {baseline.data.summary.packageStatuses.map((status) => (
-                <StatTile
-                  key={status.status}
-                  label={`${status.status} packages`}
-                  value={formatNumber(status.packages)}
-                  hint={`${formatNumber(status.drawings)} drawings`}
-                />
-              ))}
+            <div>
+              <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Recent imports</p>
+              {imports.data?.length ? (
+                <ul className="divide-y divide-border">
+                  {imports.data.slice(0, 6).map((batch) => (
+                    <ImportRow key={batch.id} batch={batch} />
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-xs text-muted-foreground">Nothing imported yet.</p>
+              )}
             </div>
+          </CardBody>
+        </Card>
+      </div>
 
-            <Card>
-              <CardHeader
-                title="By discipline"
-                description={`${formatNumber(baseline.data.summary.totalPackages)} packages carrying ${formatNumber(baseline.data.summary.totalPackageDrawings)} drawings.`}
-              />
-              <CardBody className="p-0">
-                <table className="w-full text-sm">
-                  <thead className="border-b border-border text-left text-xs uppercase text-muted-foreground">
-                    <tr>
-                      <th className="px-5 py-2 font-medium">Discipline</th>
-                      <th className="px-5 py-2 text-right font-medium">Total</th>
-                      <th className="px-5 py-2 text-right font-medium">Submitted</th>
-                      <th className="px-5 py-2 text-right font-medium">Approved</th>
-                      <th className="px-5 py-2 text-right font-medium">C — Revise</th>
-                      <th className="px-5 py-2 text-right font-medium">D — Rejected</th>
-                      <th className="px-5 py-2 text-right font-medium">Under review</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {[baseline.data.summary.total, ...baseline.data.summary.disciplines].map((row, index) => (
-                      <tr key={row.name} className={`border-b border-border last:border-0 ${index === 0 ? 'font-medium' : ''}`}>
-                        <td className="px-5 py-2">{row.name}</td>
-                        <td className="px-5 py-2 text-right tabular-nums">{formatNumber(row.total)}</td>
-                        <td className="px-5 py-2 text-right tabular-nums">{formatNumber(row.submitted)}</td>
-                        <td className="px-5 py-2 text-right tabular-nums">{formatNumber(row.approved)}</td>
-                        <td className="px-5 py-2 text-right tabular-nums">{formatNumber(row.cRevise)}</td>
-                        <td className="px-5 py-2 text-right tabular-nums">{formatNumber(row.dRejected)}</td>
-                        <td className="px-5 py-2 text-right tabular-nums">{formatNumber(row.underReview)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </CardBody>
-            </Card>
-          </div>
-        ) : null}
-      </TabPanel>
+      <div className="grid gap-4 xl:grid-cols-2">
+        <Card>
+          <CardHeader
+            title="Progress by discipline"
+            description="Share of each corporate discipline's documents submitted and approved."
+            action={<Button variant="ghost" size="sm" asChild><Link to="/summary">Summary</Link></Button>}
+          />
+          <CardBody className="p-0">
+            {summary ? <ProgressChart rows={summary.disciplines} /> : <Spinner />}
+          </CardBody>
+        </Card>
 
-      <TabPanel id="findings" active={tab}>
-        <ControlFindingsPanel />
-      </TabPanel>
+        <Card>
+          <CardHeader
+            title="Progress by company"
+            description="The same figures for each author of exchange 01."
+          />
+          <CardBody className="p-0">
+            {summary ? <ProgressChart rows={summary.authors} maxRows={13} /> : <Spinner />}
+          </CardBody>
+        </Card>
+      </div>
 
-      <TabPanel id="evm" active={tab}>
-        {evm.isPending ? <Spinner /> : null}
-        {evm.isError ? <p className="text-sm text-destructive">{apiErrorMessage(evm.error)}</p> : null}
+      <div className="grid gap-4 xl:grid-cols-2">
+        <Card>
+          <CardHeader
+            title="Baseline packages"
+            description={
+              baseline.data
+                ? `${formatNumber(baseline.data.summary.totalPackages)} packages carrying ${formatNumber(baseline.data.summary.totalPackageDrawings)} drawings.`
+                : 'How far each P6 package has got.'
+            }
+          />
+          <CardBody>
+            {baseline.data ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {baseline.data.summary.packageStatuses.map((status) => (
+                  <StatTile
+                    key={status.status}
+                    label={`${status.status} packages`}
+                    value={formatNumber(status.packages)}
+                    hint={`${formatNumber(status.drawings)} drawings`}
+                  />
+                ))}
+              </div>
+            ) : baseline.isError ? (
+              <p className="text-sm text-destructive">{apiErrorMessage(baseline.error)}</p>
+            ) : (
+              <Spinner />
+            )}
+          </CardBody>
+        </Card>
 
-        {evm.data ? (
-          <div className="space-y-4">
-            <Card>
-              <CardHeader
-                title="Schedule performance"
-                description="CPI needs actual hours, which nothing records yet, so only SPI is shown."
-              />
-              <CardBody>
-                <SpiChart rows={evm.data.summary.disciplines} />
-              </CardBody>
-            </Card>
+        <Card>
+          <CardHeader
+            title="Control findings"
+            description="Things that do not add up between the plan, the baseline and Aconex."
+            action={
+              <Button variant="outline" size="sm" asChild>
+                <Link to="/findings">
+                  Open
+                  <ArrowRight className="h-4 w-4" aria-hidden />
+                </Link>
+              </Button>
+            }
+          />
+          <CardBody className="p-0">
+            {findingCounts ? (
+              <ul className="divide-y divide-border text-sm">
+                {findingCounts.map((item) => (
+                  <li key={item.key} className="flex items-center justify-between px-5 py-2.5">
+                    <span className="flex items-center gap-2">
+                      {item.count > 0 ? (
+                        <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" aria-hidden />
+                      ) : (
+                        <span className="inline-block h-4 w-4" aria-hidden />
+                      )}
+                      {item.label}
+                    </span>
+                    <span className="tabular-nums font-medium">{formatNumber(item.count)}</span>
+                  </li>
+                ))}
+                <li className="flex items-center justify-between px-5 py-2.5 font-medium">
+                  <span>Total</span>
+                  <span className="tabular-nums">{formatNumber(findingsTotal)}</span>
+                </li>
+              </ul>
+            ) : findings.isError ? (
+              <p className="px-5 py-4 text-sm text-destructive">{apiErrorMessage(findings.error)}</p>
+            ) : (
+              <Spinner />
+            )}
+          </CardBody>
+        </Card>
+      </div>
 
-            <Card>
-              <CardBody className="p-0">
-                <table className="w-full text-sm">
-                  <thead className="border-b border-border text-left text-xs uppercase text-muted-foreground">
-                    <tr>
-                      <th className="px-5 py-2 font-medium">Group</th>
-                      <th className="px-5 py-2 text-right font-medium">Documents</th>
-                      <th className="px-5 py-2 text-right font-medium">PV</th>
-                      <th className="px-5 py-2 text-right font-medium">EV</th>
-                      <th className="px-5 py-2 text-right font-medium">BAC</th>
-                      <th className="px-5 py-2 text-right font-medium">SPI</th>
-                      <th className="px-5 py-2 font-medium">Assessment</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {[evm.data.summary.total, ...evm.data.summary.disciplines].map((row, index) => (
-                      <EvmTableRow key={row.name} row={row} emphasise={index === 0} />
-                    ))}
-                  </tbody>
-                </table>
-              </CardBody>
-            </Card>
-          </div>
-        ) : null}
-      </TabPanel>
+      <Card>
+        <CardHeader
+          title="Schedule performance by discipline"
+          description="SPI = earned value over planned value; on or above 1 is on plan."
+          action={evm.data ? <Badge tone={badgeTone[tone]}>{spiLabel[tone]}</Badge> : undefined}
+        />
+        <CardBody>
+          {evm.data ? (
+            <SpiChart rows={evm.data.summary.disciplines} />
+          ) : evm.isError ? (
+            <p className="text-sm text-destructive">{apiErrorMessage(evm.error)}</p>
+          ) : (
+            <Spinner />
+          )}
+        </CardBody>
+      </Card>
     </div>
   )
 }
 
-function EvmTableRow({ row, emphasise }: { row: EvmRow; emphasise: boolean }) {
-  const tone = spiTone(row.schedulePerformanceIndex)
-  const badgeTone = { good: 'success', warning: 'warning', critical: 'danger', none: 'neutral' } as const
-
+function ImportRow({ batch }: { batch: ImportBatchSummary }) {
   return (
-    <tr className={`border-b border-border last:border-0 ${emphasise ? 'font-medium' : ''}`}>
-      <td className="px-5 py-2">{row.name}</td>
-      <td className="px-5 py-2 text-right tabular-nums">{formatNumber(row.documents)}</td>
-      <td className="px-5 py-2 text-right tabular-nums">{row.plannedValue.toFixed(1)}</td>
-      <td className="px-5 py-2 text-right tabular-nums">{row.earnedValue.toFixed(1)}</td>
-      <td className="px-5 py-2 text-right tabular-nums">{row.budgetAtCompletion.toFixed(0)}</td>
-      <td className="px-5 py-2 text-right tabular-nums">
-        {row.schedulePerformanceIndex === null ? '—' : row.schedulePerformanceIndex.toFixed(3)}
-      </td>
-      <td className="px-5 py-2">
-        {/* The chart colours by the same bands; the words carry the meaning here. */}
-        <Badge tone={badgeTone[tone]}>{spiLabel[tone]}</Badge>
-      </td>
-    </tr>
+    <li className="flex items-center justify-between gap-2 py-1.5 text-xs">
+      <span className="min-w-0 truncate" title={batch.fileName}>{batch.fileName}</span>
+      <span className="flex shrink-0 items-center gap-2 text-muted-foreground">
+        <span className="tabular-nums">{formatNumber(batch.rowsRead)} rows</span>
+        <Badge tone={batch.completed ? 'success' : 'danger'}>{batch.completed ? batch.target : 'Failed'}</Badge>
+      </span>
+    </li>
   )
 }
 
-function GroupTable({ title, rows }: { title: string; rows: SummaryGroup[] }) {
-  return (
-    <Card>
-      <CardHeader title={title} description="Progress, quality and value at the current week." />
-      <CardBody className="p-0">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="border-b border-border text-left text-xs uppercase text-muted-foreground">
-              <tr>
-                <th className="px-4 py-2 font-medium">Group</th>
-                <th className="px-4 py-2 text-right font-medium">Total</th>
-                <th className="px-4 py-2 text-right font-medium">Planned</th>
-                <th className="px-4 py-2 text-right font-medium">Submitted</th>
-                <th className="px-4 py-2 text-right font-medium">Approved</th>
-                <th className="px-4 py-2 text-right font-medium">Rejected</th>
-                <th className="px-4 py-2 text-right font-medium">Under review</th>
-                <th className="px-4 py-2 text-right font-medium">Revisions</th>
-                <th className="px-4 py-2 text-right font-medium">Quality</th>
-                <th className="px-4 py-2 text-right font-medium">Planned %</th>
-                <th className="px-4 py-2 text-right font-medium">Completed %</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row, index) => (
-                <tr key={row.name} className={`border-b border-border last:border-0 ${index === 0 && row.name === 'Total' ? 'font-medium' : ''}`}>
-                  <td className="px-4 py-2">{row.name}</td>
-                  <td className="px-4 py-2 text-right tabular-nums">{formatNumber(row.total)}</td>
-                  <td className="px-4 py-2 text-right tabular-nums">{formatNumber(row.planned)}</td>
-                  <td className="px-4 py-2 text-right tabular-nums">{formatNumber(row.submitted)}</td>
-                  <td className="px-4 py-2 text-right tabular-nums">{formatNumber(row.approved)}</td>
-                  <td className="px-4 py-2 text-right tabular-nums">{formatNumber(row.rejected)}</td>
-                  <td className="px-4 py-2 text-right tabular-nums">{formatNumber(row.underReview)}</td>
-                  <td className="px-4 py-2 text-right tabular-nums">{formatNumber(row.totalRevisions)}</td>
-                  <td className="px-4 py-2 text-right tabular-nums">{percent(row.quality)}</td>
-                  <td className="px-4 py-2 text-right tabular-nums">{percent(row.plannedPercent)}</td>
-                  <td className="px-4 py-2 text-right tabular-nums">{percent(row.completedPercent)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </CardBody>
-    </Card>
-  )
+function formatDateTime(value: string | null | undefined) {
+  if (!value) return '—'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '—'
+  return date.toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
 }

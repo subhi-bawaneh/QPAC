@@ -4,8 +4,7 @@ import { Permissions } from '@/shared/auth/permissions'
 
 describe('visibleNavigation', () => {
   it('shows nothing to a user with no permissions', () => {
-    // The Dashboard is the landing page and needs reports.view like every report
-    // it now contains (decision D8).
+    // The Dashboard is the landing page and needs reports.view like every report it draws on.
     expect(visibleNavigation([])).toEqual([])
   })
 
@@ -16,8 +15,8 @@ describe('visibleNavigation', () => {
     expect(labels).toContain('Tracker')
     expect(labels).not.toContain('Users')
     expect(labels).not.toContain('Baseline')
-    expect(labels).not.toContain('Control Findings')
-    expect(labels).not.toContain('Summary')
+    expect(labels).toContain('Control Findings')
+    expect(labels).toContain('Summary')
   })
 
   it('shows everything to a user holding every permission', () => {

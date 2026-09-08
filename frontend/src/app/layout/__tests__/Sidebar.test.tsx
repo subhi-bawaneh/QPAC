@@ -44,11 +44,11 @@ describe('Sidebar', () => {
     expect(screen.queryAllByRole('link')).toHaveLength(0)
   })
 
-  it('no longer lists Summary or Control Findings — both live on the Dashboard', () => {
+  it('lists Summary and Control Findings as their own pages', () => {
     renderSidebar([Permissions.reportsView])
 
-    expect(screen.queryByRole('link', { name: /summary/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: /control findings/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /summary/i })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /control findings/i })).toBeInTheDocument()
   })
 
   it('gives an admin the admin entries', () => {

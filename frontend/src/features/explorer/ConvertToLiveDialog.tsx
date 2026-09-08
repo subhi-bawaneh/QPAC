@@ -12,11 +12,13 @@ import { useConvertToLive } from './api'
 
 // Converting rewrites the Live layer for every file below the folder, so the counts
 // are shown before the button is armed, and the result table afterwards.
-export function ConvertToLiveDialog({ open, onClose, folder, files, projectId }: {
+export function ConvertToLiveDialog({ open, onClose, folder, files, loading: loadingFiles = false, projectId }: {
   open: boolean
   onClose: () => void
   folder: FolderNode
+  /** Every file below the folder, not only its direct children. */
   files: FolderFileSummary[]
+  loading?: boolean
   projectId: string
 }) {
   const [result, setResult] = useState<ConvertToLiveResult | null>(null)
@@ -36,7 +38,7 @@ export function ConvertToLiveDialog({ open, onClose, folder, files, projectId }:
     })),
   })
 
-  const loading = diffs.some((query) => query.isLoading)
+  const loading = loadingFiles || diffs.some((query) => query.isLoading)
   const previews = files
     .map((file, index) => ({ file, diff: diffs[index]?.data }))
     .filter((row): row is { file: FolderFileSummary; diff: PromoteDiff } => row.diff !== undefined)

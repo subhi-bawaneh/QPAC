@@ -26,7 +26,9 @@ public sealed class TriggerDriveSyncHandler : ICommandHandler<TriggerDriveSyncCo
             throw new KeyNotFoundException($"Project {command.ProjectId} not found");
         }
 
-        var queued = _trigger.Request(command.ProjectId);
+        // No root folder means no worker is reading the trigger; say so instead of
+        // reporting a run that will never happen.
+        var queued = _state.PollingEnabled && _trigger.Request(command.ProjectId);
         return new TriggerSyncResult(queued, _state.IsSyncRunning);
     }
 }

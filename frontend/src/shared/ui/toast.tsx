@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { cn } from '@/shared/lib/utils'
 import { ToastContext, type ToastTone } from './toastContext'
 
@@ -21,13 +21,21 @@ let nextId = 1
 // looking at something else, so it must not steal focus or block the page.
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([])
+  const timers = useRef(new Set<number>())
 
   const toast = useCallback((message: string, tone: ToastTone = 'info') => {
     const id = nextId++
     setToasts((current) => [...current.slice(-3), { id, message, tone }])
-    window.setTimeout(() => {
+    const timer = window.setTimeout(() => {
+      timers.current.delete(timer)
       setToasts((current) => current.filter((t) => t.id !== id))
     }, 6000)
+    timers.current.add(timer)
+  }, [])
+
+  useEffect(() => {
+    const pending = timers.current
+    return () => pending.forEach((timer) => window.clearTimeout(timer))
   }, [])
 
   const value = useMemo(() => ({ toast }), [toast])

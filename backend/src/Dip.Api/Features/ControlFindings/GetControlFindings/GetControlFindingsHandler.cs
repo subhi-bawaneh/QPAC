@@ -18,12 +18,7 @@ public sealed class GetControlFindingsHandler
     {
         var data = await ReportDataLoader.LoadAsync(_db, query.ProjectId, ct);
 
-        // Report 1 is the only one that reads the Aconex history, and only its latest
-        // rows that are absent from the MIDP — which the database can filter for us.
-        var revisions = await _db.AconexRevisions
-            .AsNoTracking()
-            .Where(a => a.ProjectId == query.ProjectId && a.IsLatest && !a.InMidp)
-            .ToListAsync(ct);
+        var revisions = await UnplannedRevisions.LoadAsync(_db, data, query.ProjectId, ct);
 
         var findings = ControlFindingsEngine.Compute(
             data.Documents, data.TrackerRows, revisions, data.Baseline, data.StatusMappings);

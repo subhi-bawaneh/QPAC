@@ -78,7 +78,11 @@ public sealed class DipApiFactory : WebApplicationFactory<Program>, IAsyncLifeti
     {
         if (!IsPostgresAvailable)
         {
-            return;
+            // A green run with every integration test skipped proves nothing
+            // (refactor-plan § 11.3), so the absence of a database is a failure.
+            throw new InvalidOperationException(
+                "TEST_POSTGRES_CONNECTION is not set. Point it at the local scratch Postgres "
+                + "(never Neon) before running the integration tests.");
         }
 
         // Create the isolated schema before the host boots.

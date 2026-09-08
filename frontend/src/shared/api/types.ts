@@ -23,7 +23,6 @@ export type ImportState = 'NotImported' | 'Imported' | 'Outdated' | 'Failed'
 export type FileKind = 'Unknown' | 'Tidp' | 'Midp' | 'Baseline' | 'AconexHistory' | 'Lists' | 'Picklists'
 
 export type FileSource = 'Drive' | 'Upload'
-export type ImportKind = 'Tidp' | 'Midp' | 'AconexHistory' | 'Baseline' | 'Picklists' | 'Lists'
 
 /** A node of the folder tree (GET /api/projects/{id}/folders/tree). */
 export interface FolderTreeNode {

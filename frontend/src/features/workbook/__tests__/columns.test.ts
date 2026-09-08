@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  cellAddress, columnLetter, documentColumnKeys, documentColumnLetters, isEditable, rowToPayload,
+  cellAddress, columnLetter, documentColumnKeys, documentColumnLetters, rowToPayload,
 } from '../columns'
 import type { WorkbookColumn } from '@/shared/api/types'
 
@@ -39,11 +39,6 @@ describe('workbook columns', () => {
     expect(columnLetter(33)).toBe('AH')
   })
 
-  it('never lets column A be edited', () => {
-    expect(isEditable(column('A', 'documentNumber', false), true)).toBe(false)
-    expect(isEditable(column('B', 'title'), true)).toBe(true)
-    expect(isEditable(column('B', 'title'), false)).toBe(false)
-  })
 })
 
 describe('rowToPayload', () => {

@@ -1,5 +1,5 @@
 import {
-  FolderTree, LayoutDashboard, ListChecks, Table2, FileSpreadsheet,
+  FolderTree, LayoutDashboard, ListChecks, Table2, FileSpreadsheet, BarChart3, AlertTriangle,
   CalendarRange, Settings, Users,
   type LucideIcon,
 } from 'lucide-react'
@@ -13,15 +13,17 @@ export interface NavItem {
   permission?: Permission
 }
 
-// Control Findings folded into the Dashboard's tabs (decision D8), so the sidebar
-// is one item shorter and the reports sit together.
+// Dashboard is the landing overview; Summary and Control Findings keep their own
+// pages for the detailed tables.
 export const navigation: NavItem[] = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, permission: Permissions.reportsView },
   { to: '/tidps', label: 'TIDPs', icon: FolderTree, permission: Permissions.reportsView },
   { to: '/midp', label: 'MIDP', icon: FileSpreadsheet, permission: Permissions.reportsView },
   { to: '/baseline', label: 'Baseline', icon: CalendarRange, permission: Permissions.baselineManage },
   { to: '/tracker', label: 'Tracker', icon: Table2, permission: Permissions.reportsView },
-  { to: '/lists', label: 'Lists', icon: ListChecks, permission: Permissions.listsManage },
+  { to: '/summary', label: 'Summary', icon: BarChart3, permission: Permissions.reportsView },
+  { to: '/findings', label: 'Control Findings', icon: AlertTriangle, permission: Permissions.reportsView },
+  { to: '/lists', label: 'Lists', icon: ListChecks, permission: Permissions.reportsView },
   { to: '/admin/users', label: 'Users', icon: Users, permission: Permissions.usersManage },
   { to: '/admin/settings', label: 'Settings', icon: Settings, permission: Permissions.projectSettings },
 ]

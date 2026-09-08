@@ -1,8 +1,8 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/shared/api/client'
 import type {
   ConvertToLiveResult, DataTarget, DriveStatus, FolderDetail, FolderTreeNode,
-  PromoteDiff, SetTargetResult, TriggerSyncResult, UploadResult,
+  SetTargetResult, TriggerSyncResult, UploadResult,
 } from '@/shared/api/types'
 
 export const folderKeys = {
@@ -131,18 +131,19 @@ export function useTriggerSync(projectId: string) {
   })
 }
 
-export function usePromoteDiff(folderFileId: string | null) {
-  return useQuery({
-    queryKey: ['drafts', 'diff', folderFileId ?? 'none'],
-    enabled: folderFileId !== null,
-    queryFn: async () => {
-      const { data } = await api.get<PromoteDiff>(
-        `/api/drafts/promote-diff?folderFileId=${folderFileId}`)
-      return data
-    },
+/** Every file in the given folders (a folder and its descendants), for the convert preview. */
+export function useSubtreeFiles(folderIds: string[]) {
+  const results = useQueries({
+    queries: folderIds.map((id) => ({
+      queryKey: folderKeys.detail(id),
+      queryFn: async () => {
+        const { data } = await api.get<FolderDetail>(`/api/folders/${id}`)
+        return data
+      },
+    })),
   })
-}
-
-export function downloadUrl(fileId: string) {
-  return `/api/folder-files/${fileId}/download`
+  return {
+    loading: results.some((query) => query.isLoading),
+    files: results.flatMap((query) => query.data?.files ?? []),
+  }
 }

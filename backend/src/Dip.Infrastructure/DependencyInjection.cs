@@ -47,7 +47,24 @@ public static class DependencyInjection
         services.AddSingleton<IJwtTokenService, JwtTokenService>();
 
         services.Configure<GoogleDriveOptions>(configuration.GetSection(GoogleDriveOptions.SectionName));
-        services.AddHttpClient<IDriveClient, ApiKeyDriveClient>();
+        var mirrorPath = configuration["GoogleDrive:LocalMirrorPath"];
+        var isDevelopment = string.Equals(
+            configuration["ASPNETCORE_ENVIRONMENT"] ?? "Development",
+            "Development", StringComparison.OrdinalIgnoreCase);
+        if (!string.IsNullOrWhiteSpace(mirrorPath) && isDevelopment)
+        {
+            // A checked-out copy of the Drive tree stands in for Google on a developer
+            // machine; "." names the mirror root the way a folder id names the real root.
+            services.PostConfigure<GoogleDriveOptions>(o =>
+            {
+                if (string.IsNullOrWhiteSpace(o.RootFolderId)) o.RootFolderId = ".";
+            });
+            services.AddSingleton<IDriveClient, LocalMirrorDriveClient>();
+        }
+        else
+        {
+            services.AddHttpClient<IDriveClient, ApiKeyDriveClient>();
+        }
 
         services.AddSingleton<IExcelReader, Excel.ClosedXmlReader>();
         services.AddSingleton<IReportExporter, Excel.ClosedXmlReportExporter>();

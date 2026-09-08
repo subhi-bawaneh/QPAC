@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useQueryClient } from '@tanstack/react-query'
 import { Download, FolderOpen, FolderPlus, GitCompare, RefreshCw, Users } from 'lucide-react'
 import { Card, CardBody } from '@/shared/ui/card'
 import { Spinner } from '@/shared/ui/spinner'
@@ -13,7 +12,6 @@ import { QPAC_PROJECT_ID } from '@/shared/api/project'
 import { useAuth } from '@/shared/auth/useAuth'
 import { Permissions } from '@/shared/auth/permissions'
 import { useSyncEvent } from '@/shared/realtime/useSyncEvent'
-import { invalidateFor } from '@/shared/realtime/invalidation'
 import type { DataTarget, FolderTreeNode } from '@/shared/api/types'
 import { FolderTree } from './FolderTree'
 import { TileGrid, type GridItem, type GridSelection } from './TileGrid'
@@ -22,15 +20,15 @@ import { ContextMenu, type MenuAnchor } from './ContextMenu'
 import { UploadDialog } from './UploadDialog'
 import { ConvertToLiveDialog } from './ConvertToLiveDialog'
 import { CompanyDialog } from './CompanyDialog'
+import { subtreeFolderIds } from './tree'
 import {
-  useCreateFolder, useDriveStatus, useFolderDetail, useFolderTree,
+  useCreateFolder, useSubtreeFiles, useDriveStatus, useFolderDetail, useFolderTree,
   useSetFolderTarget, useTriggerSync,
 } from './api'
 
 export function ExplorerPage() {
   const { can } = useAuth()
   const navigate = useNavigate()
-  const queryClient = useQueryClient()
   const { toast } = useToast()
 
   const permissions = {
@@ -44,6 +42,8 @@ export function ExplorerPage() {
   const [selection, setSelection] = useState<GridSelection | null>(null)
   const [menu, setMenu] = useState<{ anchor: MenuAnchor; item: GridItem } | null>(null)
   const [dialog, setDialog] = useState<'upload' | 'convert' | 'company' | 'new-folder' | null>(null)
+  // The folder a new folder goes into: the right-clicked tile, else the open folder.
+  const [newFolderParent, setNewFolderParent] = useState<{ id: string; name: string } | null>(null)
   const [droppedFiles, setDroppedFiles] = useState<File[]>([])
   const [importing, setImporting] = useState<ReadonlySet<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
@@ -66,6 +66,10 @@ export function ExplorerPage() {
 
   const breadcrumb = useMemo(() => buildBreadcrumb(tree.data ?? [], folderId), [tree.data, folderId])
 
+  // Convert promotes every file below the folder, so its preview needs the subtree.
+  const subtreeIds = useMemo(() => subtreeFolderIds(tree.data ?? [], folderId), [tree.data, folderId])
+  const subtreeFiles = useSubtreeFiles(dialog === 'convert' ? subtreeIds : [])
+
   // ------------------------------------------------------------- realtime
 
   const mark = useCallback((fileId: string, active: boolean) => {
@@ -79,7 +83,6 @@ export function ExplorerPage() {
 
   useSyncEvent('syncStarted', () => toast('Drive sync started'))
   useSyncEvent('syncFinished', (event) => {
-    invalidateFor(queryClient, 'syncFinished')
     toast(
       event.error
         ? `Drive sync finished with errors: ${event.error}`
@@ -87,19 +90,15 @@ export function ExplorerPage() {
       event.error ? 'danger' : 'success',
     )
   })
-  useSyncEvent('fileQueued', () => invalidateFor(queryClient, 'fileQueued'))
   useSyncEvent('fileImportStarted', (event) => mark(event.fileId, true))
   useSyncEvent('fileImported', (event) => {
     mark(event.fileId, false)
-    invalidateFor(queryClient, 'fileImported')
     toast(`Imported ${event.batch.fileName} — ${event.batch.rowsRead} row(s)`, 'success')
   })
   useSyncEvent('fileFailed', (event) => {
     mark(event.fileId, false)
-    invalidateFor(queryClient, 'fileFailed')
     toast(`Import failed: ${event.error}`, 'danger')
   })
-  useSyncEvent('recalculationFinished', () => invalidateFor(queryClient, 'recalculationFinished'))
 
   // --------------------------------------------------------------- actions
 
@@ -199,7 +198,7 @@ export function ExplorerPage() {
               const result = await triggerSync.mutateAsync()
               toast(result.alreadyRunning ? 'A sync is already running' : 'Drive sync queued')
             }, 'Could not start the sync')}
-            onNewFolder={() => setDialog('new-folder')}
+            onNewFolder={() => { setNewFolderParent(null); setDialog('new-folder') }}
             onSetTarget={(target: DataTarget) => folder && void run(
               () => setTarget.mutateAsync({ folderId: folder.id, target }),
               'Could not change the target',
@@ -260,7 +259,10 @@ export function ExplorerPage() {
             </DropdownMenuItem>
             <DropdownMenuItem
               disabled={!permissions.canManage || menu.item.folder.driveFolderId !== null}
-              onSelect={() => setDialog('new-folder')}
+              onSelect={() => {
+                if (menu.item.kind === 'folder') setNewFolderParent({ id: menu.item.folder.id, name: menu.item.folder.name })
+                setDialog('new-folder')
+              }}
             >
               <FolderPlus aria-hidden />
               New folder
@@ -312,7 +314,8 @@ export function ExplorerPage() {
             open={dialog === 'convert'}
             onClose={() => setDialog(null)}
             folder={folder}
-            files={files}
+            files={subtreeFiles.files}
+            loading={subtreeFiles.loading}
             projectId={QPAC_PROJECT_ID}
           />
 
@@ -328,13 +331,13 @@ export function ExplorerPage() {
       <PromptDialog
         open={dialog === 'new-folder'}
         title="New folder"
-        description={folder ? `Created inside ${folder.name}.` : 'Created at the top level.'}
+        description={(newFolderParent ?? folder) ? `Created inside ${(newFolderParent ?? folder)?.name}.` : 'Created at the top level.'}
         label="Folder name"
         confirmLabel="Create"
         pending={createFolder.isPending}
         onCancel={() => setDialog(null)}
         onConfirm={(name) => void run(async () => {
-          await createFolder.mutateAsync({ parentId: folderId, name })
+          await createFolder.mutateAsync({ parentId: newFolderParent?.id ?? folderId, name })
           setDialog(null)
         }, 'Could not create the folder')}
       />

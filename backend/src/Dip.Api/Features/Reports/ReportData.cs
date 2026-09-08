@@ -74,3 +74,31 @@ internal static class ReportDataLoader
         return new ReportData(project, documents, rows, baseline, statusMappings, missing);
     }
 }
+
+// Report 1 of the Control Findings ("delivered but unplanned") needs the latest Aconex
+// revisions that no planned document covers. AconexRevision.InMidp was computed at
+// import time against the Live table only, so it is wrong for any company still in
+// the Draft layer; membership is decided here against the effective set instead.
+internal static class UnplannedRevisions
+{
+    public static async Task<IReadOnlyList<AconexRevision>> LoadAsync(
+        DipDbContext db, ReportData data, Guid projectId, CancellationToken ct)
+    {
+        var planned = data.Documents
+            .Select(d => d.DocumentNumber.ToUpperInvariant())
+            .ToHashSet(StringComparer.Ordinal);
+
+        var latest = await db.AconexRevisions
+            .AsNoTracking()
+            .Where(a => a.ProjectId == projectId && a.IsLatest)
+            .ToListAsync(ct);
+
+        var unplanned = new List<AconexRevision>();
+        foreach (var revision in latest)
+        {
+            revision.InMidp = revision.IsTerminated || planned.Contains(revision.DocNoFinal.ToUpperInvariant());
+            if (!revision.InMidp) unplanned.Add(revision);
+        }
+        return unplanned;
+    }
+}

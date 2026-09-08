@@ -187,10 +187,7 @@ public sealed class ExportReportHandler : IQueryHandler<ExportReportQuery, Expor
     private async Task<IReadOnlyList<ExportSheet>> FindingsAsync(
         ReportData data, Guid projectId, CancellationToken ct)
     {
-        var revisions = await _db.AconexRevisions
-            .AsNoTracking()
-            .Where(a => a.ProjectId == projectId && a.IsLatest && !a.InMidp)
-            .ToListAsync(ct);
+        var revisions = await UnplannedRevisions.LoadAsync(_db, data, projectId, ct);
 
         var findings = ControlFindingsEngine.Compute(
             data.Documents, data.TrackerRows, revisions, data.Baseline, data.StatusMappings);

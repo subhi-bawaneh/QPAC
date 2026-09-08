@@ -113,6 +113,51 @@ public class DriveSyncServiceTests
     }
 
     [Fact]
+    public async Task NewerDriveContentWithADifferentMd5_ReplacesTheStoredCopy()
+    {
+        if (!_factory.IsPostgresAvailable) return;
+
+        var world = await NewWorldAsync();
+        var first = Encoding.UTF8.GetBytes("workbook-v1");
+        world.Drive.AddFile(world.RootId, "file-5", "QF01012-NES-C04518-TDP-ARC.xlsx", first, Now);
+        await world.SyncAsync();
+
+        var second = Encoding.UTF8.GetBytes("workbook-v2");
+        world.Drive.SetFile(world.RootId, "file-5", "QF01012-NES-C04518-TDP-ARC.xlsx", second, Now.AddHours(2));
+        var result = await world.SyncAsync();
+
+        result.FilesQueued.Should().Be(1, "newer bytes must be fetched and re-imported");
+        world.Drive.Downloads.Should().Be(2);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DipDbContext>();
+        var file = await db.FolderFiles.SingleAsync(f => f.DriveFileId == "file-5");
+        file.ContentSource.Should().Be(FileSource.Drive);
+        file.ContentMd5.Should().Be(FakeDriveClient.Md5(second));
+        file.ContentModifiedAt.Should().Be(Now.AddHours(2));
+        file.State.Should().Be(ImportState.NotImported);
+        var blob = await db.FileBlobs.SingleAsync(b => b.FolderFileId == file.Id);
+        blob.Content.Should().Equal(second);
+    }
+
+    [Fact]
+    public async Task DriveRoot_IsTargetedAtDraft()
+    {
+        if (!_factory.IsPostgresAvailable) return;
+
+        var world = await NewWorldAsync();
+        world.Drive.AddFolder(world.RootId, "sub-6", "02.TIDPs");
+        await world.SyncAsync();
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DipDbContext>();
+        var root = await db.Folders.SingleAsync(f => f.DriveFolderId == world.RootId);
+        var child = await db.Folders.SingleAsync(f => f.DriveFolderId == "sub-6");
+        root.Target.Should().Be(DataTarget.Draft, "Drive is the Draft layer's source (D3, R3)");
+        child.Target.Should().Be(DataTarget.Draft);
+    }
+
+    [Fact]
     public async Task FileRemovedFromDrive_IsSoftDeleted()
     {
         if (!_factory.IsPostgresAvailable) return;

@@ -79,9 +79,12 @@ public sealed class DriveSyncService
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                // One unreadable folder must not abort the rest of the tree.
+                // One unreadable folder must not abort the rest of the tree. The rows
+                // this folder failed to save stay in the change tracker otherwise, and
+                // every later SaveChanges would rethrow the same error.
                 _logger.LogError(ex, "Drive sync failed for folder {Path}", folder.Path);
                 errors.Add($"{folder.Path}: {ex.Message}");
+                DetachPendingChanges();
             }
         }
 
@@ -140,7 +143,9 @@ public sealed class DriveSyncService
             Name = "Drive Root",
             Path = "DriveRoot",
             DriveFolderId = _options.RootFolderId,
-            Target = DataTarget.Live,
+            // Drive is the Draft layer's source (decision D3, rule R3): a tree that
+            // arrives from Drive is targeted at Draft until a company is converted.
+            Target = DataTarget.Draft,
         };
         _db.Folders.Add(folder);
         await _db.SaveChangesAsync(ct);
@@ -231,15 +236,17 @@ public sealed class DriveSyncService
         file.State = ImportState.NotImported;
         file.ImportError = null;
 
+        // Row and bytes commit together: a row that claims an md5 it has no blob for
+        // would never be downloaded again (shouldDownload is false) nor imported.
+        await StageBlobAsync(file.Id, bytes, ct);
         await _db.SaveChangesAsync(ct);
-        await UpsertBlobAsync(file.Id, bytes, ct);
 
         _queue.EnqueueImport(file.Id);
         await _notifier.FileQueuedAsync(projectId, file.Id, folder.Id);
         return (file, true);
     }
 
-    private async Task UpsertBlobAsync(Guid folderFileId, byte[] bytes, CancellationToken ct)
+    private async Task StageBlobAsync(Guid folderFileId, byte[] bytes, CancellationToken ct)
     {
         var blob = await _db.FileBlobs.FirstOrDefaultAsync(b => b.FolderFileId == folderFileId, ct);
         if (blob is null)
@@ -250,7 +257,19 @@ public sealed class DriveSyncService
         {
             blob.Content = bytes;
         }
-        await _db.SaveChangesAsync(ct);
+    }
+
+    // Folders already committed (and queued for the walk) are Unchanged and stay
+    // tracked; only the rows the failed folder added or modified are dropped.
+    private void DetachPendingChanges()
+    {
+        foreach (var entry in _db.ChangeTracker.Entries().ToList())
+        {
+            if (entry.State is EntityState.Added or EntityState.Modified or EntityState.Deleted)
+            {
+                entry.State = EntityState.Detached;
+            }
+        }
     }
 
     private async Task<byte[]> DownloadAsync(string driveFileId, CancellationToken ct)

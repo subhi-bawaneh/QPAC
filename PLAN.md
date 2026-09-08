@@ -710,6 +710,8 @@ cd backend
 dotnet user-secrets set "ConnectionStrings:Default" "<neon-connection-string>" --project src/Dip.Api
 dotnet user-secrets set "GoogleDrive:ApiKey" "<key>" --project src/Dip.Api
 dotnet user-secrets set "GoogleDrive:RootFolderId" "<Qpac_1 folder id>" --project src/Dip.Api
+# بديل محلي بدون مفتاح Google (Development فقط): يخدم مجلد Qpac_1 المحلي كأنه Drive
+dotnet user-secrets set "GoogleDrive:LocalMirrorPath" "/home/<you>/docs/QPAC/Qpac_1" --project src/Dip.Api
 dotnet user-secrets set "Jwt:Key" "<random 64 chars>" --project src/Dip.Api
 dotnet ef migrations add Init -p src/Dip.Infrastructure -s src/Dip.Api
 dotnet ef database update      -p src/Dip.Infrastructure -s src/Dip.Api

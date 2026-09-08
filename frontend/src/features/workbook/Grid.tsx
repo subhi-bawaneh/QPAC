@@ -95,7 +95,12 @@ export function Grid({
   const commit = async (direction: 'down' | 'right' | 'none') => {
     if (!editing) return
     const row = rows[editing.cell.row]
-    await onSave(row, editing.cell.column, editing.value)
+    try {
+      await onSave(row, editing.cell.column, editing.value)
+    } catch {
+      // The page keeps the editor open and shows the API's message on the cell.
+      return
+    }
     stopEditing()
     if (direction === 'down') move(1, 0)
     if (direction === 'right') move(0, 1)

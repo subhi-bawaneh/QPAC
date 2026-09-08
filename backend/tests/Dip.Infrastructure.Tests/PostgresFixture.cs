@@ -64,7 +64,9 @@ public sealed class PostgresFixture : IAsyncLifetime
     {
         if (!IsAvailable)
         {
-            return;
+            throw new InvalidOperationException(
+                "TEST_POSTGRES_CONNECTION is not set. Point it at the local scratch Postgres "
+                + "(never Neon) before running the database tests.");
         }
 
         await using var conn = new NpgsqlConnection(_configuredConnectionString);

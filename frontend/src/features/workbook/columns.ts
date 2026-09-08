@@ -62,11 +62,6 @@ export function cellAddress(columns: WorkbookColumn[], columnIndex: number, rowN
   return `${letter}${rowNumber}`
 }
 
-/** Column A is the composed number, recomputed from L..U — never typed. */
-export function isEditable(column: WorkbookColumn | undefined, canEdit: boolean): boolean {
-  return canEdit && column !== undefined && column.editable
-}
-
 const exchangeKeys: Record<string, { number: number; field: string }> = {
   ex1Author: { number: 1, field: 'author' },
   ex1Geometrical: { number: 1, field: 'geometrical' },

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/shared/api/client'
 import { QPAC_PROJECT_ID } from '@/shared/api/project'
+import type { ImportBatchSummary, UnifiedStatus } from '@/shared/api/types'
 
 export interface SummaryGroup {
   name: string
@@ -93,6 +94,76 @@ export interface EvmSummary {
   disciplines: EvmRow[]
 }
 
+// ---------------------------------------------------------------- control findings
+
+export interface DeliveredButUnplanned {
+  documentNumber: string
+  revision: string
+  title: string
+  aconexStatus: string
+  status: UnifiedStatus | null
+  dateModified: string
+}
+
+export interface UnplannedDocument {
+  type: string
+  discipline: string
+  documentNumber: string
+  title: string
+  plannedStart: string | null
+  author: string | null
+}
+
+export interface UnusedPackage {
+  package: string
+  activityCode: string
+  originalDuration: number
+  finish: string
+  documentCount: number
+}
+
+export interface DuplicateDocument {
+  type: string
+  discipline: string
+  documentNumber: string
+  title: string
+  plannedStart: string | null
+  author: string | null
+  count: number
+}
+
+export interface ControlFindings {
+  deliveredButUnplanned: DeliveredButUnplanned[]
+  unplanned: UnplannedDocument[]
+  unusedPackages: UnusedPackage[]
+  duplicates: DuplicateDocument[]
+}
+
+export function useControlFindings() {
+  return useQuery({
+    queryKey: ['findings', QPAC_PROJECT_ID],
+    queryFn: async () => {
+      const { data } = await api.get<{ findings: ControlFindings; recalculationRequired: boolean }>(
+        `/api/projects/${QPAC_PROJECT_ID}/control-findings`,
+      )
+      return data
+    },
+  })
+}
+
+export function useRecentImports(take = 8) {
+  return useQuery({
+    queryKey: ['imports', QPAC_PROJECT_ID, take],
+    queryFn: async () => {
+      const { data } = await api.get<ImportBatchSummary[]>(
+        `/api/projects/${QPAC_PROJECT_ID}/imports`,
+        { params: { take } },
+      )
+      return data
+    },
+  })
+}
+
 interface Envelope<T> {
   summary: T
   recalculationRequired: boolean
@@ -140,8 +211,8 @@ export function useEvmSummary(reportDate?: string) {
 /**
  * Rebuilds the snapshots the reports read, one chunk at a time.
  *
- * The API is chunked because shared hosting has no background workers, so the
- * caller drives the loop and the offset comes back in each response.
+ * The worker normally recalculates after every import; this is the admin fallback,
+ * chunked so a step never outlives a request, with the caller driving the loop.
  */
 export function useRecalculate() {
   const queryClient = useQueryClient()

@@ -12,14 +12,18 @@ import { MidpPage } from '@/features/midp/MidpPage'
 import { BaselinePage } from '@/features/baseline/BaselinePage'
 import { ListsPage } from '@/features/lists/ListsPage'
 import { WorkbookPage } from '@/features/workbook/WorkbookPage'
+import { ControlFindingsPage } from '@/features/findings/ControlFindingsPage'
 import { UsersPage } from '@/features/admin/UsersPage'
 import { SettingsPage } from '@/features/admin/SettingsPage'
 import { Spinner } from '@/shared/ui/spinner'
 
-// Recharts is ~450 kB of the bundle and only the Dashboard needs it, so the landing
-// route is split out: signing in no longer downloads a charting library up front.
+// Recharts is ~450 kB of the bundle and only the Dashboard and Summary need it, so
+// both routes are split out: signing in no longer downloads a charting library up front.
 const DashboardPage = lazy(async () => ({
   default: (await import('@/features/dashboard/DashboardPage')).DashboardPage,
+}))
+const SummaryPage = lazy(async () => ({
+  default: (await import('@/features/summary/SummaryPage')).SummaryPage,
 }))
 
 export function AppRoutes() {
@@ -43,14 +47,20 @@ export function AppRoutes() {
             <Route path="drafts/:folderFileId" element={<DraftReviewPage />} />
             <Route path="midp" element={<MidpPage />} />
             <Route path="tracker" element={<TrackerPage />} />
+            <Route
+              path="summary"
+              element={
+                <Suspense fallback={<Spinner label="Loading charts…" />}>
+                  <SummaryPage />
+                </Suspense>
+              }
+            />
+            <Route path="findings" element={<ControlFindingsPage />} />
+            <Route path="lists" element={<ListsPage />} />
           </Route>
 
           <Route element={<RequirePermission permission={Permissions.baselineManage} />}>
             <Route path="baseline" element={<BaselinePage />} />
-          </Route>
-
-          <Route element={<RequirePermission permission={Permissions.listsManage} />}>
-            <Route path="lists" element={<ListsPage />} />
           </Route>
 
           <Route element={<RequirePermission permission={Permissions.usersManage} />}>

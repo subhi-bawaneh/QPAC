@@ -87,6 +87,15 @@ public sealed class ImportWorker : BackgroundService
             {
                 _queue.EnqueueImport(id);
             }
+
+            // Snapshots may be behind whatever changed while the process was down
+            // (a target flipped by hand, an interrupted run), and a recalculation
+            // over an already-current set is cheap, so every project gets one.
+            var projects = await db.Projects.AsNoTracking().Select(p => p.Id).ToListAsync(ct);
+            foreach (var projectId in projects)
+            {
+                _queue.EnqueueRecalculate(projectId);
+            }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
