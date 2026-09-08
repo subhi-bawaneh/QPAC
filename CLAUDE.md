@@ -4,6 +4,7 @@
 
 ## Read first
 - `PLAN.md` — single source of truth: stack, repo structure, feature-slice shape, data model (identity, folders, Live, Draft), Excel column maps, every Excel formula translated to a rule, importers, EVM, frontend structure, phases with exact prompts and expected test values.
+- `docs/refactor-plan.md` — v3 refactor (2026-09-08): Drive read-only, no disk storage, hosted worker + SignalR, automatic import, effective document set, editable Lists. Overrides the PLAN.md sections it lists in its § 10.
 - `docs/excel-analysis.md` — written in Phase 0; what the sample workbooks actually contain and any discrepancy with PLAN.md.
 - `samples/` — TIDP-STL.xlsx, MIDP.xlsx, Tracker.xlsx. Every computed number must match these files.
 
