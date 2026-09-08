@@ -11,6 +11,7 @@ import { TrackerPage } from '@/features/tracker/TrackerPage'
 import { MidpPage } from '@/features/midp/MidpPage'
 import { BaselinePage } from '@/features/baseline/BaselinePage'
 import { ListsPage } from '@/features/lists/ListsPage'
+import { WorkbookPage } from '@/features/workbook/WorkbookPage'
 import { UsersPage } from '@/features/admin/UsersPage'
 import { SettingsPage } from '@/features/admin/SettingsPage'
 import { Spinner } from '@/shared/ui/spinner'
@@ -38,6 +39,7 @@ export function AppRoutes() {
               }
             />
             <Route path="tidps" element={<ExplorerPage />} />
+            <Route path="files/:fileId" element={<WorkbookPage />} />
             <Route path="drafts/:folderFileId" element={<DraftReviewPage />} />
             <Route path="midp" element={<MidpPage />} />
             <Route path="tracker" element={<TrackerPage />} />

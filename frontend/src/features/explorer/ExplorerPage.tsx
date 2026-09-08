@@ -119,13 +119,7 @@ export function ExplorerPage() {
       return
     }
 
-    // The spreadsheet viewer arrives in R5; until then a Draft file opens its review
-    // screen and a Live file downloads.
-    if (item.file.effectiveLayer === 'Draft') {
-      navigate(`/drafts/${item.file.id}`)
-    } else {
-      void run(() => download(item.file.id, item.file.name), 'Could not download the file')
-    }
+    navigate(`/files/${item.file.id}`)
   }
 
   const download = async (fileId: string, name: string) => {

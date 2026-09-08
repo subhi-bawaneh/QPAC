@@ -294,3 +294,42 @@ Test Files  19 passed (19)
 Tests       90 passed (90)
 ```
 `npm run lint`: 0 errors, 0 warnings. `npm run typecheck`: clean. `npm run build`: succeeds.
+
+---
+
+## R5 — Workbook viewer
+
+### What changed
+`features/workbook/` — the spreadsheet a file opens into at `/files/:fileId`:
+- **`WorkbookPage`**: title bar (file name, DB1 Draft / DB2 Live badge, source and modified time,
+  "Drive has newer data", Download, Back), the TIDP header block, the grid, the sheet tabs and the
+  status bar.
+- **`FormulaBar`**: the Excel name box (`C12`) and the active cell's value, read-only — column A shows
+  the composed document number exactly as the workbook's `CONCATENATE` does.
+- **`Grid`**: rows virtualised with `@tanstack/react-virtual` (22 px), a sticky column-letter row and
+  column-title row, a sticky row-number gutter, frozen column A, click and shift-click range
+  selection, arrows/Home/End/PageUp/PageDown, `Ctrl+C` copies the selection as TSV, and an inline
+  editor opened by double-click, F2 or typing — Enter and Tab commit, Esc cancels, and a validation
+  error from the API keeps the editor open with the message on the cell.
+- **`Cell` / `CellEditor` / `SheetTabs` / `StatusBar`**: Excel styling — `#f2f2f2` headers,
+  `#d9d9d9` gridlines, a `#217346` active-cell border and a 10 % selection wash, both themed for dark.
+- **`api.ts`**: `useInfiniteQuery` over 500-row pages, and `saveRowUrl` routing a save to
+  `PUT /api/drafts/documents/{id}` or `PUT /api/documents/{id}` by the file's layer.
+- **`columns.ts`**: the 34 column keys in PLAN.md § 5.1.1 order, A1 letters, and `rowToPayload`,
+  which turns the edited row back into the full-replace body the two editors take — without the
+  document number, because the server recomposes it from L..U.
+- The `/files/:fileId` route and the explorer's "Open a file" now point at the viewer.
+
+### Deviations
+18. **`Grid.test.tsx` mocks `offsetWidth`/`offsetHeight`.** TanStack Virtual measures its scroller
+    with those, and jsdom reports 0 for both, so without the mock the grid renders no rows and the
+    test would pass against an empty grid.
+19. **Closing the editor returns focus to the grid.** Not in the plan, but without it the keystroke
+    after a commit lands on the document rather than moving the active cell.
+
+### Test summary
+```
+Test Files  22 passed (22)
+Tests       108 passed (108)
+```
+`npm run lint`: 0 errors, 0 warnings. `npm run typecheck`: clean. `npm run build`: succeeds.
