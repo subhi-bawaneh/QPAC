@@ -10,8 +10,12 @@ public sealed record FolderNode(
     DataTarget Target,
     string? DriveFolderId,
     DateTime? LastSyncedAt,
+    bool IsCompany,
+    Guid? AuthorId,
+    string? AuthorName,
     int ChildCount,
-    int FileCount);
+    int FileCount,
+    bool HasNewerDraft);
 
 public sealed record FolderTreeNode(
     Guid Id,
@@ -19,6 +23,10 @@ public sealed record FolderTreeNode(
     string Name,
     string Path,
     DataTarget Target,
+    bool IsCompany,
+    string? AuthorName,
+    int FileCount,
+    bool HasNewerDraft,
     IReadOnlyList<FolderTreeNode> Children);
 
 public sealed record FolderFileDto(
@@ -32,7 +40,10 @@ public sealed record FolderFileDto(
     long SizeBytes,
     ImportState State,
     string? ImportError,
-    DateTime? LastImportedAt);
+    DateTime? LastImportedAt,
+    int? RowCount,
+    bool HasNewerDraft,
+    DataTarget EffectiveLayer);
 
 // 202 body of POST /api/folders/{id}/files — the import itself runs in the worker.
 public sealed record UploadResult(Guid FileId, string Name, bool Replaced);

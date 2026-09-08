@@ -1,4 +1,3 @@
-using Dip.Application.Engine;
 using Dip.Domain.Entities;
 using Dip.Domain.Enums;
 
@@ -8,6 +7,7 @@ namespace Dip.Api.Features.Tracker;
 // computed ones (Tracker.xlsx!Tracker, docs/excel-analysis.md § 4.1).
 public sealed record TrackerRowDto(
     Guid DocumentId,
+    DataTarget Layer,
     string DocumentNumber,
     string Type,
     string Discipline,
@@ -31,30 +31,33 @@ public sealed record TrackerRowDto(
     DateTime? ActualStart,
     DateTime? ActualFinish)
 {
-    public static TrackerRowDto From(Document document, TrackerRow row) => new(
-        document.Id,
-        document.DocumentNumber,
-        document.F04DocType,
-        document.CorporateDiscipline,
-        document.Title,
-        document.DeliveryMilestone,
-        document.ActivityId,
-        document.PackageName,
-        document.F07Building,
-        document.F08BLevel,
-        document.F05Discipline,
-        document.Exchanges.FirstOrDefault(e => e.Number == 1)?.Author,
-        row.SubmissionsCount,
-        row.Revision,
-        row.AconexStatus,
-        row.Status,
-        row.SubmissionDate,
-        row.DateModified,
-        row.Transmittal,
-        row.PlannedStart,
-        row.PlannedFinish,
-        row.ActualStart,
-        row.ActualFinish);
+    // Every column, display and computed alike, lives on the snapshot (decision D11),
+    // so the grid never joins back to the source tables.
+    public static TrackerRowDto From(DocumentSnapshot snapshot) => new(
+        snapshot.DocumentId,
+        snapshot.Layer,
+        snapshot.DocumentNumber,
+        snapshot.Type,
+        snapshot.Discipline,
+        snapshot.Title,
+        snapshot.DeliveryMilestone,
+        snapshot.ActivityId,
+        snapshot.PackageName,
+        snapshot.Building,
+        snapshot.Level,
+        snapshot.Trade,
+        snapshot.Author,
+        snapshot.SubmissionsCount,
+        snapshot.Revision,
+        snapshot.AconexStatus,
+        snapshot.Status,
+        snapshot.SubmissionDate,
+        snapshot.DateModified,
+        snapshot.Transmittal,
+        snapshot.PlannedStart,
+        snapshot.PlannedFinish,
+        snapshot.ActualStart,
+        snapshot.ActualFinish);
 }
 
 // One Aconex revision of a document, for the detail drawer's revision history.

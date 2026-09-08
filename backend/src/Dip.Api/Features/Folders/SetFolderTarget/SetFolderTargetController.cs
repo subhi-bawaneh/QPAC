@@ -12,13 +12,11 @@ public sealed class SetFolderTargetController : ApiControllerBase
     public sealed record SetTargetRequest(DataTarget Target);
 
     [HttpPut]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(SetTargetResult), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> Put(Guid id, [FromBody] SetTargetRequest body, CancellationToken ct)
-    {
-        await Dispatcher.Send(new SetFolderTargetCommand(id, body.Target), ct);
-        return NoContent();
-    }
+    public async Task<ActionResult<SetTargetResult>> Put(
+        Guid id, [FromBody] SetTargetRequest body, CancellationToken ct) =>
+        Ok(await Dispatcher.Send(new SetFolderTargetCommand(id, body.Target), ct));
 }

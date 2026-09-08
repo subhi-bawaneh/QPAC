@@ -1,5 +1,4 @@
 using Dip.Api.Features.Recalculation;
-using Dip.Api.Hubs;
 using Dip.Domain.Enums;
 using Dip.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -64,10 +63,9 @@ public sealed class ImportWorker : BackgroundService
                 break;
 
             case WorkItemKind.Recalculate:
-                var recalculation = scope.ServiceProvider.GetRequiredService<RecalculationService>();
-                var documents = await recalculation.RunAllAsync(item.Id, ct);
-                await scope.ServiceProvider.GetRequiredService<ISyncNotifier>()
-                    .RecalculationFinishedAsync(item.Id, documents);
+                // RunAllAsync publishes its own completion event.
+                await scope.ServiceProvider.GetRequiredService<RecalculationService>()
+                    .RunAllAsync(item.Id, ct);
                 break;
         }
     }

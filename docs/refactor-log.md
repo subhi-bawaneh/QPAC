@@ -104,3 +104,80 @@ Passed! - Failed: 0, Passed:  46, Skipped: 0, Total:  46 - Dip.Api.IntegrationTe
   (R8) arrives in R2, together with `Layer` for Draft rows.
 - `FolderNode` / `FolderTreeNode` do not yet carry `isCompany`, `authorName`, `fileCount`,
   `hasNewerDraft`; that is R2's DTO work.
+
+---
+
+## R2 — Targets, companies, conversion, effective set, materialised tracker, Live edits
+
+### What changed
+- **`EffectiveDocumentLoader`** (`Dip.Api/Common`): the union of the Live rows of Live-target
+  files and the Draft rows of Draft-target files, deduplicated by upper-cased document number with
+  the newest source file winning and Live breaking a tie (R8). Draft rows are projected onto
+  in-memory `Document` objects so every engine keeps one input type.
+- **`RecalculationService`** rebuilt over the effective set: `RunStepAsync` (the admin fallback) and
+  `RunAllAsync` (the worker's path, which also deletes snapshots whose row left the set and raises
+  `recalculationFinished`). Snapshots now carry `Layer`, `FolderFileId` and the display columns.
+- **`ReportDataLoader`** reads the effective set, so Corporate Summary, Baseline Summary, Control
+  Findings, EVM and Export all cover both layers with no change of their own.
+- **Tracker over snapshots only**: `ListTrackerDocuments` filters and pages one table in SQL,
+  `GetTrackerDocument` loads the snapshot by id, and `TrackerRowDto` gained `layer`.
+- **`SetFolderTarget`** cascades to the whole subtree (`FolderSubtree`), returns
+  `{folderId, target, foldersUpdated}` and queues a recalculation.
+- **`SetFolderCompany`** (`PUT /api/folders/{id}/company`) with author validation against the
+  non-deleted `Author` picklist.
+- **`ConvertToLive`** (`POST /api/folders/{id}/convert-to-live`): promotes every file below the
+  folder that has a draft with `deleteMissing: true`, writes a `PromoteBatch` per file, cascades the
+  target to Live and queues a recalculation — all inside the one transaction.
+- **`UpdateDocument`** (`PUT /api/documents/{id}`): the Live twin of the draft editor. Recomposes the
+  number from the eight fields, 409 on a number another row holds, one `AuditLog` row per changed
+  field including the numbering fields, drops the row's snapshot and queues a recalculation.
+- **`GetFileWorkbook`** (`GET /api/folder-files/{id}/workbook`): 34 columns A–AH in PLAN.md § 5.1.1
+  order for TIDP/MIDP (column A read-only), plus read-only `Baseline` and `Picklists` tabs; the TIDP
+  header block; dates as `yyyy-MM-dd` and every cell a string, so leading zeros survive.
+- **DTOs**: `FolderNode`/`FolderTreeNode` gained `isCompany`, `authorName`, `fileCount`,
+  `hasNewerDraft`; `FolderFileDto` gained `rowCount`, `hasNewerDraft`, `effectiveLayer`.
+  `FolderProjections` computes "Drive has newer data" from the draft's import batch versus the last
+  promote.
+- **New**: `ConflictException` → 409 in `ProblemDetailsExceptionHandler`.
+
+### Deviations
+7. **`ConflictException` added to `Dip.Application/Behaviors/AuthorizationBehavior.cs`.** The codebase
+   had no 409 path; the file already holds `UnauthorizedException` and `ForbiddenException`, so the
+   new exception sits with them rather than in a file of its own.
+8. **Recalculation is serialised per project** by a process-wide semaphore in `RecalculationService`.
+   Snapshots are keyed by row id, so the worker's `RunAllAsync` and a concurrent call to the admin
+   step endpoint raced on the same primary keys (reproduced as a duplicate-key failure in
+   `RecalculationTests`). The plan does not mention it; the alternative was leaving a real race in.
+9. **`FolderSubtree` and `FolderProjections`** are new shared helpers under `Features/Folders/`, not
+   named in the plan's file list. Both are needed by more than one slice (target cascade, convert,
+   tree, folder detail, workbook).
+10. **The Draft-layer sample test compares Draft against Live instead of against the Tracker sheet's
+    literals.** The plan asks for "the same Corporate Summary numbers as Live (reuse
+    `CorporateSummarySampleTests` expectations)". Those expectations are read from
+    `Tracker.xlsx!Tracker` (15,883 rows), while importing `MIDP.xlsx!MIDP` through the importer
+    yields 15,724 effective rows — the two sheets are different populations, and the gap exists on
+    the Live side too (it is not introduced by the Draft layer). `DraftLayerReportsTests` therefore
+    imports MIDP + Baseline into two projects that differ only in folder target and asserts the
+    Corporate Summary, Baseline Summary and Control Findings payloads are byte-identical, with
+    anchors so two empty reports cannot pass. The absolute sample numbers remain covered by the
+    unchanged `CorporateSummarySampleTests`. Logged in `docs/excel-analysis.md` § 6 as well.
+11. **`GetFileWorkbookTests` does not assert "row 1 col A = the sample's first number".** § 5.6 orders
+    the sheet by `DocumentNumber`, under which `…-CAL-…` sorts before `…-SDW-…`, so row 1 is not the
+    workbook's row 17. The test instead asserts that column A equals the concatenation of columns
+    L–U for row 1 (the CONCATENATE rule itself) and that the documented first number
+    `QF01012-NES-C04518-SDW-STL-00-Z00000-0ZZ0004` is present in the sheet.
+12. **`[assembly: InternalsVisibleTo("Dip.Api.IntegrationTests")]` added to `Dip.Api`** so the tests
+    can drive `EffectiveDocumentLoader`, `FileImportService` and `RecalculationService` directly.
+
+### Test summary
+```
+Passed! - Failed: 0, Passed:   3, Skipped: 0, Total:   3 - Dip.Domain.Tests.dll
+Passed! - Failed: 0, Passed: 131, Skipped: 0, Total: 131 - Dip.Engine.Tests.dll
+Passed! - Failed: 0, Passed:  42, Skipped: 0, Total:  42 - Dip.Infrastructure.Tests.dll
+Passed! - Failed: 0, Passed:  62, Skipped: 0, Total:  62 - Dip.Api.IntegrationTests.dll
+```
+`dotnet build`: 0 warnings, 0 errors.
+
+### Known gaps carried into R3
+- `GetPicklists` / `GetStatusMappings` still return soft-deleted rows and the CRUD slices do not
+  exist yet; `PicklistImporter` still reads only the nine numbering lists.

@@ -14,6 +14,13 @@ public sealed class ForbiddenException : Exception
     public ForbiddenException(string message) : base(message) { }
 }
 
+// A write that would break a uniqueness rule the caller can resolve — a document
+// number already taken, a picklist code already in use. Surfaces as 409.
+public sealed class ConflictException : Exception
+{
+    public ConflictException(string message) : base(message) { }
+}
+
 public sealed class AuthorizationBehavior<TRequest, TResult> : IPipelineBehavior<TRequest, TResult>
 {
     private readonly ICurrentUser _currentUser;

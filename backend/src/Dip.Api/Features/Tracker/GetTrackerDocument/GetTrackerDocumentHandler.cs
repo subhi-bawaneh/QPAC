@@ -14,30 +14,20 @@ public sealed class GetTrackerDocumentHandler
 
     public async Task<TrackerDocumentDto> Handle(GetTrackerDocumentQuery query, CancellationToken ct)
     {
-        var document = await _db.Documents
-            .AsNoTracking()
-            .Include(d => d.Exchanges)
-            .FirstOrDefaultAsync(d => d.Id == query.DocumentId, ct)
-            ?? throw new KeyNotFoundException($"Document {query.DocumentId} not found");
-
         var snapshot = await _db.DocumentSnapshots
             .AsNoTracking()
-            .FirstOrDefaultAsync(s => s.DocumentId == document.Id, ct);
-
-        var row = snapshot is null
-            ? new TrackerRow(document.Id, document.DocumentNumber,
-                null, null, null, null, null, null, null, null, null, null, null)
-            : TrackerRow.FromSnapshot(snapshot, document.DocumentNumber);
+            .FirstOrDefaultAsync(s => s.DocumentId == query.DocumentId, ct)
+            ?? throw new KeyNotFoundException($"Document {query.DocumentId} not found");
 
         var statuses = StatusMappingLookup.Create(
             await _db.StatusMappings.AsNoTracking()
-                .Where(m => m.ProjectId == document.ProjectId)
+                .Where(m => m.ProjectId == snapshot.ProjectId && !m.IsDeleted)
                 .ToListAsync(ct));
 
-        var number = document.DocumentNumber.ToUpperInvariant();
+        var number = snapshot.DocumentNumber.ToUpperInvariant();
         var revisions = await _db.AconexRevisions
             .AsNoTracking()
-            .Where(a => a.ProjectId == document.ProjectId && a.DocNoFinal.ToUpper() == number)
+            .Where(a => a.ProjectId == snapshot.ProjectId && a.DocNoFinal.ToUpper() == number)
             .OrderByDescending(a => a.DateModified)
             .ToListAsync(ct);
 
@@ -52,6 +42,6 @@ public sealed class GetTrackerDocumentHandler
                 a.FileType, a.FileName, a.IsLatest, a.IsTerminated))
             .ToList();
 
-        return new TrackerDocumentDto(TrackerRowDto.From(document, row), history);
+        return new TrackerDocumentDto(TrackerRowDto.From(snapshot), history);
     }
 }

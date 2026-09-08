@@ -109,10 +109,12 @@ internal static class TestHelpers
         return Guid.Parse((await response.Content.ReadAsStringAsync()).Trim('"'));
     }
 
-    public static async Task SetTargetAsync(HttpClient admin, Guid folderId, string target)
+    public static async Task<JsonElement> SetTargetAsync(HttpClient admin, Guid folderId, string target)
     {
         var response = await admin.PutAsJsonAsync($"/api/folders/{folderId}/target", new { target });
-        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            "set target failed: {0}", await response.Content.ReadAsStringAsync());
+        return await response.Content.ReadFromJsonAsync<JsonElement>();
     }
 
     public static async Task<HttpResponseMessage> UploadAsync(

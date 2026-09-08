@@ -1,6 +1,7 @@
+using Dip.Api.Common;
+using Dip.Api.Hubs;
 using Dip.Application.Engine;
 using Dip.Domain.Entities;
-using Dip.Domain.Enums;
 using Dip.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -12,48 +13,124 @@ public sealed record RecalculationStepResult(
     int NextOffset,
     bool Done);
 
-// Rebuilds DocumentSnapshots — the materialised TrackerEngine output every report
-// reads — a page at a time.
+// Rebuilds DocumentSnapshots — the materialised tracker rows every report and the
+// Tracker grid read — a page at a time over the effective document set
+// (refactor-plan § 3 R8), so both layers are covered by one pass.
 //
-// Chunked because shared hosting has no background workers (CLAUDE.md rule 9): the
-// caller keeps posting steps until Done. State is the offset in the response, so
-// nothing needs a batch table, and a step that fails can simply be retried.
-//
-// Each step loads only the Aconex revisions belonging to its own page of documents,
-// so the cost per step stays flat no matter how large the history grows.
+// Still chunked: the worker loops the steps, and the step endpoint stays as the
+// admin fallback. Each step loads only the Aconex revisions belonging to its own
+// page, so the cost per step stays flat as the history grows.
 public sealed class RecalculationService
 {
     public const int DefaultChunkSize = 1000;
     public const int MaxChunkSize = 5000;
 
-    private readonly DipDbContext _db;
+    // Snapshots are keyed by row id, so two overlapping rebuilds of the same project
+    // race on the same primary keys. The worker runs one item at a time, but the
+    // admin step endpoint can be called while it is working — this serialises them.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, SemaphoreSlim> Gates = new();
 
-    public RecalculationService(DipDbContext db) => _db = db;
+    private static SemaphoreSlim GateFor(Guid projectId) =>
+        Gates.GetOrAdd(projectId, _ => new SemaphoreSlim(1, 1));
+
+    private readonly DipDbContext _db;
+    private readonly ISyncNotifier _notifier;
+
+    public RecalculationService(DipDbContext db, ISyncNotifier notifier)
+    {
+        _db = db;
+        _notifier = notifier;
+    }
 
     public async Task<RecalculationStepResult> RunStepAsync(
         Guid projectId, int offset, int take, CancellationToken ct)
     {
-        var project = await _db.Projects.FirstOrDefaultAsync(p => p.Id == projectId, ct)
+        var gate = GateFor(projectId);
+        await gate.WaitAsync(ct);
+        try
+        {
+            return await RunStepCoreAsync(projectId, offset, take, ct);
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    private async Task<RecalculationStepResult> RunStepCoreAsync(
+        Guid projectId, int offset, int take, CancellationToken ct)
+    {
+        var project = await _db.Projects.AsNoTracking().FirstOrDefaultAsync(p => p.Id == projectId, ct)
             ?? throw new KeyNotFoundException($"Project {projectId} not found");
 
-        var total = await _db.Documents.CountAsync(d => d.ProjectId == projectId, ct);
+        var effective = await EffectiveDocumentLoader.LoadAsync(_db, projectId, ct);
+        var total = effective.Count;
         var chunk = Math.Clamp(take, 1, MaxChunkSize);
 
-        // Ordered by id so paging is stable across steps.
-        var documents = await _db.Documents
-            .AsNoTracking()
-            .Include(d => d.Exchanges)
-            .Where(d => d.ProjectId == projectId)
-            .OrderBy(d => d.Id)
-            .Skip(offset)
-            .Take(chunk)
-            .ToListAsync(ct);
-
-        if (documents.Count == 0)
+        // Ordered by row id so paging is stable across steps.
+        var page = effective.OrderBy(d => d.RowId).Skip(offset).Take(chunk).ToList();
+        if (page.Count == 0)
         {
             return new RecalculationStepResult(0, total, offset, Done: true);
         }
 
+        await WritePageAsync(projectId, project, page, ct);
+
+        var nextOffset = offset + page.Count;
+        return new RecalculationStepResult(page.Count, total, nextOffset, nextOffset >= total);
+    }
+
+    // Loops the chunked step until the whole project is rebuilt, then drops the
+    // snapshots of rows that are no longer in the effective set.
+    public async Task<int> RunAllAsync(Guid projectId, CancellationToken ct)
+    {
+        var gate = GateFor(projectId);
+        await gate.WaitAsync(ct);
+        try
+        {
+            return await RunAllCoreAsync(projectId, ct);
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    private async Task<int> RunAllCoreAsync(Guid projectId, CancellationToken ct)
+    {
+        var project = await _db.Projects.AsNoTracking().FirstOrDefaultAsync(p => p.Id == projectId, ct)
+            ?? throw new KeyNotFoundException($"Project {projectId} not found");
+
+        var effective = await EffectiveDocumentLoader.LoadAsync(_db, projectId, ct);
+        var ordered = effective.OrderBy(d => d.RowId).ToList();
+
+        for (var offset = 0; offset < ordered.Count; offset += DefaultChunkSize)
+        {
+            var page = ordered.Skip(offset).Take(DefaultChunkSize).ToList();
+            await WritePageAsync(projectId, project, page, ct);
+        }
+
+        var keep = ordered.Select(d => d.RowId).ToHashSet();
+        var stale = await _db.DocumentSnapshots
+            .Where(s => s.ProjectId == projectId)
+            .Select(s => s.DocumentId)
+            .ToListAsync(ct);
+        var drop = stale.Where(id => !keep.Contains(id)).ToList();
+        if (drop.Count > 0)
+        {
+            await _db.DocumentSnapshots
+                .Where(s => s.ProjectId == projectId && drop.Contains(s.DocumentId))
+                .ExecuteDeleteAsync(ct);
+        }
+
+        await _notifier.RecalculationFinishedAsync(projectId, ordered.Count);
+        return ordered.Count;
+    }
+
+    private async Task WritePageAsync(
+        Guid projectId, Project project, IReadOnlyList<EffectiveDocument> page, CancellationToken ct)
+    {
+        var documents = page.Select(d => d.Document).ToList();
         var numbers = documents
             .Select(d => d.DocumentNumber.ToUpperInvariant())
             .Distinct(StringComparer.Ordinal)
@@ -71,24 +148,24 @@ public sealed class RecalculationService
 
         var statusMappings = await _db.StatusMappings
             .AsNoTracking()
-            .Where(m => m.ProjectId == projectId)
+            .Where(m => m.ProjectId == projectId && !m.IsDeleted)
             .ToListAsync(ct);
 
         var rows = TrackerEngine.Compute(documents, revisions, baseline, statusMappings, project);
 
-        var documentIds = documents.Select(d => d.Id).ToList();
+        var rowIds = page.Select(d => d.RowId).ToList();
         var existing = await _db.DocumentSnapshots
-            .Where(s => documentIds.Contains(s.DocumentId))
+            .Where(s => rowIds.Contains(s.DocumentId))
             .ToListAsync(ct);
-        var existingByDocument = existing.ToDictionary(s => s.DocumentId);
+        var existingByRow = existing.ToDictionary(s => s.DocumentId);
+        var sourceByRow = page.ToDictionary(d => d.RowId);
 
-        var documentsById = documents.ToDictionary(d => d.Id);
         var computedAt = DateTime.UtcNow;
         foreach (var row in rows)
         {
             var computed = row.ToSnapshot(projectId, computedAt);
-            Describe(computed, documentsById[row.DocumentId]);
-            if (existingByDocument.TryGetValue(row.DocumentId, out var snapshot))
+            Describe(computed, sourceByRow[row.DocumentId]);
+            if (existingByRow.TryGetValue(row.DocumentId, out var snapshot))
             {
                 Apply(snapshot, computed);
             }
@@ -99,17 +176,15 @@ public sealed class RecalculationService
         }
 
         await _db.SaveChangesAsync(ct);
-
-        var nextOffset = offset + documents.Count;
-        return new RecalculationStepResult(documents.Count, total, nextOffset, nextOffset >= total);
     }
 
     // Copies the tracker's display columns off the source row so the grid can page
     // over DocumentSnapshots alone (decision D11).
-    internal static void Describe(DocumentSnapshot snapshot, Document document)
+    private static void Describe(DocumentSnapshot snapshot, EffectiveDocument source)
     {
-        snapshot.Layer = DataTarget.Live;
-        snapshot.FolderFileId = document.FolderFileId;
+        var document = source.Document;
+        snapshot.Layer = source.Layer;
+        snapshot.FolderFileId = source.FolderFileId;
         snapshot.DocumentNumber = document.DocumentNumber;
         snapshot.Title = document.Title;
         snapshot.Type = document.F04DocType;
@@ -121,21 +196,6 @@ public sealed class RecalculationService
         snapshot.DeliveryMilestone = document.DeliveryMilestone;
         snapshot.ActivityId = document.ActivityId;
         snapshot.PackageName = document.PackageName;
-    }
-
-    // Loops the chunked step until the whole project is rebuilt. Called by the
-    // import worker; the step endpoint stays as the admin fallback.
-    public async Task<int> RunAllAsync(Guid projectId, CancellationToken ct)
-    {
-        var offset = 0;
-        var processed = 0;
-        while (true)
-        {
-            var step = await RunStepAsync(projectId, offset, DefaultChunkSize, ct);
-            processed += step.Processed;
-            if (step.Done) return processed;
-            offset = step.NextOffset;
-        }
     }
 
     private static void Apply(DocumentSnapshot target, DocumentSnapshot computed)
