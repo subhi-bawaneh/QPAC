@@ -173,25 +173,51 @@ QP \| QP.E \| QP.E.ST \| QP.E.ST.GEN \| QP.E.ST.GEN.GEN | QP.E.ST.GEN.GEN.1070 |
 
 #### 2.3 Picklists Sheet
 
-**Purpose**: Enumerated values (dropdowns) for the numbering scheme.
+**Purpose**: Enumerated values (dropdowns) — both the numbering scheme and the general
+document attributes.
 
-**Structure**: Columns for each picklist field (Project, Originator, Contract, DocType, Discipline, Zone, Building, DrawingType, Level, etc.). Each column has header + codes + descriptions.
+**Structure** (verified against `samples/PickLists.xlsx!Pick_Lists` on 2026-09-08):
+group labels in **row 4**, column headers in **row 5**, data from **row 6** down.
+Two kinds of list sit side by side:
 
-**Example** (Discipline):
-```
-Discipline Code | Discipline Description
-STL             | Structural
-STR             | Structural (variant?)
-ARC             | Architectural
-ELE             | Electrical
-MEC             | Mechanical
-FIR             | Fire & LS
-INF             | Infrastructure
-FAC             | Façade
-...
-```
+* **numbering lists** — a code column plus a description column
+  (`Ab. 05` / `5 - Discipline`)
+* **value lists** — a single column whose header is the list's own name
+  (`Authoring Software`, `Author`, …)
 
----
+**⚠ Correction to the earlier reading of this sheet.** The first pass located lists by
+the row-4 FIELD labels, which finds only nine of them, and cannot find Drawing Type or
+Level at all: the standalone workbook labels their group once as
+`FIELD 08 - SERIAL NUMBER`, not as `FIELD 08A` / `FIELD 08B`. Every list is therefore
+located by its **row-5 header text** instead. That reaches all **17**:
+
+| Cols | Header (row 5) | List | Rows | First value |
+|---|---|---|---|---|
+| A/B | `Ab. 01` / `1 - Project Name` | Project | 1 | `QF01012` "Qiddaya Performing Arts Center" |
+| C/D | `Ab. 02` / `2 - Originator Name` | Originator | 1 | `NES` "Nesma and Partners" |
+| E/F | `Ab. 03` / `3 - Contract Reference` | Contract | 1 | `C04518` "Contract Number" |
+| G/H | `Ab. 04` / `4 - Document Type` | DocType | 94 | `AGD` "Agenda" |
+| I/J | `Ab. 05` / `5 - Discipline` | Discipline | 98 | `ACO` "Acoustic" |
+| K/L | `Ab. 06` / `6 - Area/Zone` | Zone | 29 | `00` "Overall" (leading zero kept) |
+| M/N | `Ab. 07` / `7 - Venue/Building` | Building | 12 | `Z00000` "Overall" |
+| O/P | `Ab. 08A` / `8A - Drawing Type` | DrawingType | 10 | `0` "General (…)" |
+| Q/R | `Ab. 08B` / `8B - Level` | Level | 16 | `00` "Non-Specific ( For Blade )" |
+| S | `8C - Sequence Number` | — | — | prose, not codes — **not imported** |
+| T | `Authoring Software` | AuthoringSoftware | 13 | `Revit` |
+| U | `File/Exchange Format` | ExchangeFormat | 26 | `.rvt` |
+| V | `Scope Area` | ScopeArea | 31 | `Design Management` (cells carry trailing spaces — trim) |
+| W/X | `Code` / `Status` | SuitabilityCode | 14 | `S0 (WIP)` "Initial status or WIP" |
+| Y | `Scale` | Scale | 16 | `NTS` |
+| Z/AA | `Classification ID` / `Classification` | Classification | 10 | `FI_60_25` "Drawing" |
+| AB | `Corporate Discipline` | CorporateDiscipline | 9 | `Architectural` |
+| AC | `Author` | Author | 12 | `Nesma & Partners` |
+
+Single-column lists store the value in `Code` with an empty `Description`. `Discipline`
+keeps the code → corporate-name mapping the importers use; `CorporateDiscipline` is only
+the dropdown's value set. Status Mapping is **not** in this workbook — it is seeded
+(22 rows) and edited from the Lists page.
+
+Counts and first values above are asserted per list in `PicklistImporterTests`.
 
 ## 3. MIDP.xlsx Structure
 
@@ -649,6 +675,7 @@ PackageStatus: Submitted  (all submitted, none approved yet)
 
 | 20 | **The Baseline Summary's `C-Revise and Resubmit` and `D-Rejected` columns read 0 in every row — the sheet's own formula is broken.** `COUNTIFS(MIDP[Aconex Status], H$4)` compares the status against the header text, which drops the spaces around the dash (`"C-Revise and Resubmit"`) while the data holds `"C - Revise and Resubmit"`, so the criteria never match. Structural shows 0 here while the Corporate Summary reports 299 rejected. | `Baseline Summary!H8` formula vs the Aconex status values; every H/I cell in the sheet is 0 | Implemented as PLAN.md § 5.4.3 intends — the real status counts — rather than reproducing the defect, confirmed with the product owner on 2026-09-05. Every other column is asserted against the sheet exactly; these two are asserted against the status counts and cross-checked against the Corporate Summary's Rejected total. |
 | 21 | The Baseline sheet holds 683 `Submittal` rows, 680 `Approval` rows and **12 rows with a blank Activity type**. Only the two named types are activities. | Activity-column histogram over `Tracker.xlsx!Baseline`; the Baseline Summary lists exactly the 683 Submittal codes | `BaselineImporter` already skips untyped rows; the test workbook reader was defaulting them to Submittal and now skips them too. |
+| 22 | **The MIDP sheet and the Tracker sheet are different populations.** `Tracker.xlsx!Tracker` holds 15,883 rows and is what the Corporate Summary's totals are computed from; importing `MIDP.xlsx!MIDP` through `MidpImporter` yields **15,724** rows in the effective document set (rows without a CORPORATE DISCIPLINE are skipped, and intra-file duplicates collapse). The gap is the same whether the workbook lands in the Live layer or the Draft one. | Counted during the v3 run (`docs/refactor-log.md`, R2 deviation 10) | `CorporateSummarySampleTests` keeps asserting the sheet's own numbers by feeding the engine the Tracker sheet directly. `DraftLayerReportsTests` instead proves the layer is invisible to the reports: the same workbooks imported into a Draft-target folder and a Live-target folder produce byte-identical Corporate Summary, Baseline Summary and Control Findings payloads. |
 
 **EVM vs Corporate Summary — two definitions of "earned"** (Phase 5.5). The Corporate Summary's Earned Value credits a document whose unified status is Approved; EVM credits it only once it was approved **on or before the report date** (PLAN.md § 7: "كل Actual يُفلتر ≤ R"). At ReportDate 2026-08-30 the sample holds **19 documents approved later**, so EVM's EV% is slightly below the summary's Completed% for the disciplines containing them, while PV% matches exactly. Both are intended: the summary reports current state, EVM reports state as at the report date.
 
@@ -782,6 +809,9 @@ Combining `Tracker.xlsx!Lists` + observed status values + legacy `MIDP.xlsx!LIST
 
 ---
 
-**Document Version**: 0.1 (Phase 0.1)  
-**Last Verified**: 2026-09-04  
-**Next Review**: After Phase 1.2 (database schema finalized)
+
+---
+
+**Document Version**: 0.2 (revised during the v3 refactor)  
+**Last Verified**: 2026-09-08  
+**Next Review**: when a new sample workbook arrives

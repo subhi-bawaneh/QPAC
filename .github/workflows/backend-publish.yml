@@ -1,9 +1,10 @@
 name: backend-publish
 
 # Builds, tests and packages the API as a zip an operator can drop into Plesk.
-# The integration tests need a real Postgres, so one runs as a service container —
-# the suite skips them when TEST_POSTGRES_CONNECTION is unset, and a green run that
-# skipped everything would be worthless.
+# The integration tests need a real Postgres, so one runs as a service container:
+# without TEST_POSTGRES_CONNECTION they would do nothing, and a green run that
+# tested nothing would be worthless. The connection must not point at Neon —
+# TestConnectionGuard refuses it, because the tests create and drop schemas.
 on:
   push:
     branches: [main, master]

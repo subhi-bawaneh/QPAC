@@ -22,22 +22,39 @@ cd publish && zip -r ../dip-api.zip .
 
 `web.config` ships in the package. It selects `hostingModel="inprocess"`, so the app
 runs inside the IIS worker process — no reverse-proxy hop, and one process holding
-the Npgsql pool that chunked imports and recalculation depend on.
+the Npgsql pool, the Drive-sync and import workers, and the SignalR hub.
 
 ### Deploy
 
 1. Plesk → **Files** → upload `dip-api.zip` into the site's `httpdocs` and extract.
 2. Plesk → **Dedicated .NET Core** (or *IIS Application settings*) → confirm the
    application root is the folder containing `Dip.Api.dll`.
-3. Create `App_Data/` under the site root and give the application pool identity
-   **write** permission. Two things need it:
-   - `App_Data/files/` — uploaded workbooks (`LocalFileStorage`)
-   - `App_Data/logs/` — the rolling Serilog files
-4. Set the environment variables below, then **Restart** the app.
+3. Create `App_Data/logs/` under the site root and give the application pool identity
+   **write** permission. It is the only path the app writes to — the rolling Serilog
+   files. Workbook bytes live in the database (`FileBlobs`), never on disk.
+4. Configure the application pool for a process that must stay alive (§ 1.1), set the
+   environment variables below, then **Restart** the app.
 
-> Uploaded workbooks live on disk, not in the database. They are not in the zip and
-> not in git. Back up `App_Data/files/` alongside the database, or a restored
-> database will reference files that no longer exist.
+> Nothing outside `App_Data/logs/` needs backing up: the database holds the workbooks
+> as well as the data extracted from them, so a database restore is a complete restore.
+
+### 1.1 The app must not be recycled — it runs the workers
+
+Drive polling, importing and recalculation all run inside the IIS worker process
+(`DriveSyncWorker`, `ImportWorker`). An idled-out or unstarted process does none of
+them, and nothing outside will wake it. In Plesk → *IIS Application settings*, or in
+IIS Manager:
+
+| Setting | Value | Why |
+|---|---|---|
+| Application pool → **Start Mode** | `AlwaysRunning` | the process starts with IIS rather than on the first request |
+| Application pool → **Idle Time-out (minutes)** | `0` | a quiet night must not stop the poller |
+| Application pool → **Regular Time Interval (minutes)** | `0` | disables the default 29-hour recycle mid-import |
+| Site → Advanced settings → **Preload Enabled** | `True` | the app is loaded without waiting for a request |
+| Server Manager → *Web Server → Application Development* | **WebSocket Protocol** installed | lets SignalR use WebSockets |
+
+WebSockets are not required: the hub negotiates transports and falls back to long
+polling when the feature is absent. Do not force a transport in either direction.
 
 ### Environment variables (Plesk → *Environment variables*)
 
@@ -51,7 +68,9 @@ Everything is read at **startup** — changing any of these needs a restart.
 | `Seed__AdminEmail` | first boot | Email of the SuperAdmin created on an empty database |
 | `Seed__AdminPassword` | first boot | Its password |
 | `GoogleDrive__ApiKey` | optional | Only needed for Drive sync |
-| `GoogleDrive__RootFolderId` | optional | The folder sync starts from |
+| `GoogleDrive__RootFolderId` | optional | The folder sync starts from; unset disables polling entirely |
+| `GoogleDrive__PollHours` | optional | How often `DriveSyncWorker` polls Drive (default `5`; `0` disables the timer and leaves "Sync now") |
+| `GoogleDrive__StartupDelaySeconds` | optional | Grace period before the first poll (default `30`) |
 | `Cors__PreviewOriginSuffix` | optional | e.g. `.vercel.app`, to allow preview deployments |
 | `ASPNETCORE_ENVIRONMENT` | yes | `Production` |
 
@@ -117,8 +136,12 @@ key has no Drive access — the app rewords both into that sentence.
 > The key travels in the query string, so it appears in Google's request logs and in
 > any proxy in between. Keep it read-only and Drive-only.
 
-Leaving Drive unconfigured is fine: `/health/detail` reports it **Degraded**, sync is
-unavailable, and everything else — uploads, imports, drafts, reports — works.
+Leaving Drive unconfigured is fine: `/health/detail` reports it **Degraded**, polling
+is skipped (the worker logs this once and stops), and everything else — uploads,
+automatic imports, drafts, reports — works.
+
+Drive is **read-only**: the client lists folders and downloads files, and has no other
+members. Nothing the platform does is ever written back to Google.
 
 ### TLS
 
@@ -134,7 +157,8 @@ content regardless of CORS.
 1. Import the repository; set **Root Directory** to `frontend`. `vercel.json`
    supplies the framework, build command, SPA rewrites and cache headers.
 2. Environment variables → `VITE_API_URL=https://api.your-domain.com` — the API's
-   origin, **no trailing slash, no `/api` suffix**. The client appends the paths.
+   origin, **no trailing slash, no `/api` suffix**. The client appends the paths, and
+   the SignalR client appends `/hubs/sync`.
 3. Deploy.
 
 `VITE_*` values are baked in at **build** time, not read at runtime. Changing
@@ -158,6 +182,11 @@ Scheme + host + non-default port. **No trailing slash, no path.**
 **Outside Development, a missing `Cors__Origins` fails at startup** rather than
 falling back to "any origin". A boot error is found immediately; an open CORS policy
 is not.
+
+The policy sends `AllowCredentials`, which a browser refuses to combine with `*` — so
+even in Development the origin is named (`http://localhost:5173`) rather than
+wildcarded. SignalR's `/hubs/sync` negotiate call is what makes this matter: it is a
+credentialed request, and a wildcard origin fails it.
 
 **Vercel preview deployments** get their own hostname per commit, and `WithOrigins`
 has no wildcards. To let previews reach the API, set:
@@ -186,8 +215,14 @@ Google outage never makes the API look down and a health poll never spends API q
 Then, in the app:
 
 1. Sign in with `Seed__AdminEmail` / `Seed__AdminPassword`.
-2. **TIDPs** → create a folder → upload a workbook → **Import**.
-3. **Summary** → **Recalculate** if it says the numbers are behind.
+2. **TIDPs** → **Sync now**, or create a folder and drop a workbook on it. The import
+   starts on its own; the tile spins and the toast reports the result.
+3. **Dashboard** → the numbers rebuild after each import; **Recalculate** is the
+   manual fallback.
+
+The Drive status pill on the TIDPs toolbar reads
+`GET /api/projects/{id}/drive/status`, and `/health/detail` carries the same facts in
+the `drive` check's description (`lastRunFinishedAt`, `queuedImports`).
 
 ### Operational notes
 
@@ -197,9 +232,12 @@ Then, in the app:
 - **Rate limiting**: login and refresh are limited to 20 requests per minute per
   client address (`RateLimit__AuthPermitPerWindow`, `RateLimit__AuthWindowSeconds`),
   returning 429 beyond that. No other endpoint is limited — they all need a token.
-- **Long operations are chunked** because shared hosting has no background workers.
-  Imports and recalculation are driven by the browser one request at a time; closing
-  the tab stops the loop, and re-running continues from where it stopped.
+- **Long operations run in the hosted workers**, not in the browser. A Drive poll, an
+  import and a recalculation all continue with the tab closed; progress is pushed over
+  `/hubs/sync` to whoever is watching. Recalculation is still chunked *inside* the
+  worker so one pass never holds a single transaction over 16k rows.
+- **A restart loses only the queue, not the work.** `ImportWorker` re-queues every
+  file still `NotImported` or `Outdated` when it starts.
 - **Migrations run at startup.** Deploying a build with a new migration applies it on
   the first request after the restart. Take a Neon branch first if the migration is
   destructive.

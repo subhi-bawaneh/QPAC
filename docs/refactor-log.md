@@ -359,3 +359,125 @@ Test Files  24 passed (24)
 Tests       117 passed (117)
 ```
 `npm run lint`: 0 errors, 0 warnings. `npm run typecheck`: clean. `npm run build`: succeeds.
+
+---
+
+## R7 — Docs, deploy, plan alignment
+
+### What changed
+- **`PLAN.md`** — the sections § 13 of the refactor plan names were rewritten in place, in Arabic,
+  keeping every sample number:
+  - § 1 "قيود ASPMonster": the "no `BackgroundService`, no reliable SignalR" constraint is replaced
+    by the two hosted workers, the hub, the 64 MB upload limit and the application-pool requirement.
+  - § 2: the feature list now names the slices that exist, plus `Workers/`, `Hubs/` and
+    `Common/EffectiveDocumentLoader`.
+  - § 3.2: rewritten around `FolderFile` + `FileBlob`, the `(FolderId, lower(Name))` identity, the
+    newest-wins rule, automatic import, companies and authors, and the removal of rename/delete.
+  - § 3.4: the import-by-target rules replaced by R3/R4/R5 (Drive → Draft always, uploads follow the
+    target, Aconex/Baseline/Picklists/Lists always Live); `PromoteBatch` loses `SnapshotJson`;
+    rollback replaced by `ConvertToLive`.
+  - § 4: Drive is read-only and polled by `DriveSyncWorker`; "لا تستورد تلقائياً" explicitly reversed.
+  - § 5.2: `DocumentSnapshot` documented as the materialised tracker row with `Layer` and no FK.
+  - § 5.4: the engine's `Documents` input documented as the effective set (R8).
+  - § 6: importers take streams from `FileBlob`, sheet routing per R5, `PicklistImporter` over
+    `Pick_Lists` with 17 lists.
+  - § 8: `folders/` → `explorer/`, new `workbook/`, `summary/` + `findings/` → `dashboard/` at `/`,
+    `realtime/`, the new sidebar order, and the tile explorer described as built.
+  - § 9: phases 2.1, 3.5, 4.2(d), 6.2 and 6.5 struck through with what replaced them, and a v3 entry
+    added pointing at this log.
+- **`CLAUDE.md`**: rule 9 reworded to the hosted workers + hub (decision D4), rule 4 extended with
+  the read-only-Drive and no-disk rules, "Read first" now puts `docs/refactor-plan.md` before
+  `PLAN.md` and adds this log, and the stack line names SignalR, the workers, `@microsoft/signalr`,
+  `@tanstack/react-virtual` and the Neon test guard.
+- **`docs/deploy.md`**: `App_Data/files` removed from the deploy steps (bytes live in `FileBlobs`);
+  a new § 1.1 with the IIS settings the workers need (Start Mode `AlwaysRunning`, Idle Time-out `0`,
+  Regular Time Interval `0`, Preload Enabled, WebSocket Protocol optional); `GoogleDrive__PollHours`
+  and `GoogleDrive__StartupDelaySeconds` documented; the CORS section explains why the origin is
+  named rather than wildcarded (the hub's credentialed negotiate); the "after deploying" walkthrough
+  and the operational notes rewritten around automatic import and the workers.
+- **`backend/src/Dip.Api/web.config`**: a comment pointing at § 1.1 (the file itself is unchanged).
+- **`docs/excel-analysis.md`**: § 2.3 rewritten with the verified 17-list layout of `Pick_Lists`
+  (row-4 groups, row-5 headers, row-6 data), the correction that the FIELD-label scan cannot find
+  Drawing Type or Level, and every count and first value; finding 22 added for the MIDP-sheet vs
+  Tracker-sheet population gap.
+- **`.github/workflows/backend-publish.yml`**: the comment now says the connection must not point at
+  Neon (the guard refuses it). No behavioural change — the CI service container is already local.
+
+---
+
+## Commits
+
+| Phase | Commit | Subject |
+|---|---|---|
+| R0 | `2a8273c` | v3 refactor plan |
+| R1 | `ff4fb2a` | Backend core: schema v3, no disk storage, read-only Drive, hosted workers, automatic import |
+| R2 | `6e18868` | Effective document set, company conversion, materialised tracker, Live edits |
+| R3 | `09bce07` | Lists backend: every picklist imported, CRUD with soft delete |
+| R4 | `61b08dd` | Frontend: Drive-like explorer, SignalR progress, Dashboard at / |
+| R5 | `ee86f9b` | Workbook viewer: the file opens as a spreadsheet |
+| R6 | `b546911` | Lists page: every list editable, with soft delete and restore |
+| R7 | this commit | Docs, deploy and plan aligned with v3 |
+
+---
+
+## Final test summary
+
+Backend (`cd backend && dotnet test`, `TEST_POSTGRES_CONNECTION` → local Postgres 16):
+```
+Passed! - Failed: 0, Passed:   3, Skipped: 0, Total:   3 - Dip.Domain.Tests.dll
+Passed! - Failed: 0, Passed: 131, Skipped: 0, Total: 131 - Dip.Engine.Tests.dll
+Passed! - Failed: 0, Passed:  44, Skipped: 0, Total:  44 - Dip.Infrastructure.Tests.dll
+Passed! - Failed: 0, Passed:  69, Skipped: 0, Total:  69 - Dip.Api.IntegrationTests.dll
+```
+247 tests, 0 failed, 0 skipped. `dotnet build`: 0 warnings, 0 errors.
+(Baseline before the run: 201 tests.)
+
+Frontend (`cd frontend`):
+```
+Test Files  24 passed (24)
+Tests       117 passed (117)
+```
+`npm run lint`: 0 errors, 0 warnings. `npm run typecheck`: clean. `npm run build`: succeeds.
+(Baseline before the run: 64 tests.)
+
+---
+
+## Self-check against § 14
+
+| # | Item | Result |
+|---|---|---|
+| 1 | § 0.4 and § 5.9 greps empty; `IDriveClient` has two members | **Pass.** Both greps over `backend/src` return nothing. `IDriveClient` = `ListChildrenAsync`, `DownloadAsync`. |
+| 2 | Nothing under `backend/src` writes to the file system except Serilog | **Pass.** No `File.Create`/`File.WriteAll`/`Directory.CreateDirectory`/`StreamWriter` anywhere; Serilog's file sink is configured in `appsettings.json`. |
+| 3 | Every new endpoint is a slice with a validator and a `[Permission]` | **Pass.** All 19 new/changed slices (`SetFolderCompany`, `TriggerDriveSync`, `GetDriveStatus`, `DownloadFile`, `GetFileWorkbook`, `UploadFile`, `ConvertToLive`, `UpdateDocument`, and the 11 Lists slices) have a controller, a validator and a permission attribute. Validators were added to the new *queries* too, which the plan only requires for commands. |
+| 4 | `FolderFiles` filtered unique index; the R2 upsert covered both ways | **Pass.** `IX_FolderFiles_FolderId_NameLower_Active` is unique over `(FolderId, NameLower)` filtered on `NOT "IsDeleted"`, with `NameLower` a stored `lower("Name")` column. Covered by `FoldersFlowTests.Upload_ImportsAutomatically_AndTheSameNameReplacesTheRow` (upload over upload) and `DriveSyncServiceTests` (Drive over Drive, and Drive refusing to overwrite a newer upload). |
+| 5 | Drive-sourced content never reaches Live; uploads follow the target | **Pass.** `FileImportServiceTests.DriveSourcedTidp_InALiveFolder_LandsInDraft` and `UploadSourcedTidp_InALiveFolder_LandsInLive`, plus the `LayerFor` theory over all seven combinations. |
+| 6 | Dedupe and tie-break tested; snapshots carry `Layer`; Tracker reads snapshots only | **Pass.** `EffectiveDocumentLoaderTests` covers all four rules; `RecalculationTests` asserts `Layer` and the display columns on Draft rows; `ListTrackerDocumentsHandler` and `GetTrackerDocumentHandler` query `DocumentSnapshots` alone. |
+| 7 | The sample tests still pass, and pass for a Draft-target import | **Pass, with a change of method.** `CorporateSummarySampleTests`, `BaselineSummarySampleTests`, `ControlFindingsSampleTests`, `EvmSampleTests` and `TrackerEngineSampleTests` are unchanged and green. The Draft half is `DraftLayerReportsTests`, which asserts Draft/Live parity rather than the sheet's literals — see R2 deviation 10 and `docs/excel-analysis.md` finding 22 for why. |
+| 8 | `ConvertToLive` is transactional, cascades, writes a `PromoteBatch` per file, queues recalculation | **Pass.** One `SaveChanges` for the whole command; `ConvertToLiveTests` asserts the promote counts, the flipped target and the repeatability. |
+| 9 | Picklist counts match § 7; deleted codes skipped on re-import; restore-on-create works | **Pass.** All 17 counts and first values asserted in `PicklistImporterTests`; `ReImportSkipsSoftDeletedCodes` and `PicklistCrudTests.ReImportOfThePicklistsWorkbook_SkipsDeletedCodes` cover the skip; `CreatingADeletedCode_RestoresTheSameRow` covers the restore. |
+| 10 | No frontend references to deleted endpoints; hub reconnects with a fresh token; tiles and viewer tests pass; `/` is the Dashboard; Lists has 18 tabs | **Pass.** Grep for the removed routes returns nothing; `accessTokenFactory` is read per connect; `TileGrid`/`FileTile`/`ExplorerToolbar`/`Grid`/`ListsPage` tests green; `/` renders `DashboardPage`; `picklistFields` has 17 entries and the page adds Status mapping. |
+| 11 | Viewer: 34 columns in PLAN order, column A read-only and recomposed, leading zeros preserved | **Pass.** `columns.test.ts` pins the 34 keys, the letters A/V/W/Z/AA/AC/AH and the L..U block; `GetFileWorkbookTests` asserts the same from the API and that column A equals the concatenation of L..U; `UpdateDocumentTests` proves `0004 → 0005` recomposes the number with the zeros intact. |
+| 12 | The log lists commits, deviations, test summaries, removed files and the Neon reset timestamp | **Pass.** This file. |
+| 13 | Neon holds only seed rows plus what the first Drive poll imported; the test guard is in place | **Pass.** After the reset: Disciplines 10, StatusMappings 22, Users 1, PicklistItems 0, Folders 0, FolderFiles 0, Documents 0, DocumentDrafts 0 — seed only; no Drive poll has run yet because `GoogleDrive__RootFolderId` is not set in this environment. `TestConnectionGuard` refuses any `neon.tech` connection string and has its own unit test. |
+| 14 | `PLAN.md`, `CLAUDE.md`, `docs/deploy.md` updated; no secrets in the diff | **Pass.** All three rewritten above. The only `neon.tech` strings in the diff are the guard and its test; the only passwords are `postgres/postgres` for the local test database. The Neon connection string was read from user-secrets into shell variables and never printed, written or committed. |
+
+---
+
+## Known gaps
+
+1. **No Drive poll has run against the reset Neon database.** `GoogleDrive__RootFolderId` is not set
+   in this environment, so the worker logs that polling is disabled and stops. Set the root folder id
+   and API key in Plesk and the first poll (30 s after startup) will import `00.Picklists`,
+   the TIDPs and the Tracker workbook on its own.
+2. **The Corporate Summary from an imported MIDP is 15,724 rows, not the sheet's 15,883.** The gap is
+   in the sample data, not the layer logic (finding 22), and predates this refactor. Worth putting to
+   the owner: the 159 rows are ones `MidpImporter` skips or collapses.
+3. **`ImportBatch.Kind` for a Tracker workbook is `AconexHistory`** even though the same batch also
+   imports its `Baseline` and `Lists` sheets. The counts are aggregated across the three. Splitting
+   it into three batches would report each sheet separately.
+4. **The workbook viewer edits one row at a time.** Paste into a range is not implemented; `Ctrl+C`
+   copies, `Ctrl+V` does not paste.
+5. **`RecalculationService.RunStepAsync` rebuilds the effective set on every step.** The worker's
+   `RunAllAsync` loads it once, so the cost only lands on the admin fallback endpoint.
+6. **`DriveSyncWorker` polls every project in the database.** Single-project today; a real
+   multi-tenant deployment would want per-project scheduling.

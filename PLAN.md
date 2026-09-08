@@ -2,7 +2,7 @@
 ## الخطة النهائية لـ Claude Code — v2 (.NET 8 CQRS Vertical Slice + React TS)
 
 > هذا الملف هو المرجع الوحيد للمشروع. Claude Code يقرأه قبل أي مهمة.
-> **v3 (2026-09-08):** `docs/refactor-plan.md` يلغي الأقسام المذكورة في § 10 منه (Drive قراءة فقط، لا تخزين على القرص، عامل خلفي + SignalR، استيراد تلقائي، Lists قابلة للتعديل). اقرأه بعد هذا الملف.
+> **v3 (2026-09-08):** `docs/refactor-plan.md` هو المواصفة الحالية، ويلغي الأقسام المذكورة في § 13 منه (§ 1، 3.2، 3.4، 4، 6، 8، 9 هنا). الأقسام الملغاة أُعيدت كتابتها في مكانها بهذا الملف؛ ما بقي بلا تغيير هو خرائط أعمدة الإكسل ومعادلاتها وقواعد المحرك وأرقام العيّنات. سجل التنفيذ في `docs/refactor-log.md`.
 > القاعدة الذهبية: **كل رقم يخرجه النظام يجب أن يطابق الرقم الموجود في ملفات الإكسل في `samples/`**. لا تُعتبر أي ميزة منتهية بدون اختبار يثبت المطابقة.
 > **ممنوع** كتابة أي secret (connection string, API key, JWT key) في أي ملف داخل المستودع. كلها متغيرات بيئة / User Secrets.
 
@@ -38,8 +38,10 @@
 | التوقيت | كل التواريخ `timestamp without time zone` (naive كما في الإكسل). Npgsql: `AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true)` أو استخدام `DateTime` Unspecified — قرار واحد موثق في `docs/decisions/001-datetime.md`. الحفاظ على أجزاء الثانية في `DateModified` |
 
 ### قيود ASPMonster (استضافة مشتركة) — تؤثر على التصميم
-- لا `BackgroundService` طويل الأمد ولا SignalR موثوق → الاستيراد والمزامنة تُنفَّذ **متزامنة ومجزّأة**: الطلب يعالج ملفاً واحداً (أو 2000 صف) ويعيد `progress`، والواجهة تكرر الطلب حتى الانتهاء. `ImportJob` في القاعدة يحفظ الحالة.
-- `requestTimeout` في `web.config` = 10 دقائق. حجم الرفع الأقصى 50 MB.
+> **v3 (2026-09-08):** المالك اختبر الاستضافة وأثبت أن `BackgroundService` و SignalR يعملان. راجع `docs/refactor-plan.md` § 5.4.
+- العمل الطويل يجري داخل **عاملَين مستضافَين** في نفس عملية IIS: `DriveSyncWorker` (يستطلع Drive كل `GoogleDrive:PollHours`، افتراضياً 5) و `ImportWorker` (يستهلك طابور `WorkQueue`). التقدّم يُدفَع عبر **SignalR** على `/hubs/sync`. إعادة الحساب ما زالت **مجزّأة داخل العامل** حتى لا تمتد معاملة واحدة على 16 ألف صف.
+- شرط تشغيلي: تجمّع التطبيقات يجب ألا يتوقف — `Start Mode = AlwaysRunning`، `Idle Time-out = 0`، `Preload Enabled = true` (انظر `docs/deploy.md` § 1.1). بدونها لا يعمل الاستطلاع.
+- `requestTimeout` في `web.config` = 10 دقائق. حجم الرفع الأقصى **64 MB** (بايتات الملف تذهب إلى `FileBlobs` في القاعدة، لا إلى القرص).
 - لا Docker على الاستضافة → النشر بـ `dotnet publish -c Release -r win-x64 --self-contained false` ورفع عبر Plesk/FTP. GitHub Action تُنتج artifact.
 - متغيرات البيئة تُضبط من Plesk (Environment Variables) أو `web.config` `<environmentVariables>` (غير ملتزم — لا تضع secrets في web.config داخل المستودع).
 
@@ -65,16 +67,18 @@ dip/
 │   │   │   ├── Excel/
 │   │   │   └── DependencyInjection.cs     # AddInfrastructure(config)
 │   │   └── Dip.Api/                       # Controllers per feature, Program.cs, DependencyInjection.cs
-│   │       ├── DependencyInjection.cs     # AddApi(): controllers, auth, swagger, cors, dispatcher, behaviors, all handlers by assembly scan
-│   │       ├── Common/                    # ApiControllerBase, ProblemDetails, Pagination, Result
+│   │       ├── DependencyInjection.cs     # AddApi(): controllers, auth, swagger, cors, SignalR, dispatcher, behaviors, workers, all handlers by assembly scan
+│   │       ├── Common/                    # ApiControllerBase, ProblemDetails, Pagination, Result, EffectiveDocumentLoader
+│   │       ├── Workers/                   # WorkQueue, WorkerState, DriveSyncWorker, DriveSyncService, ImportWorker, FileImportService
+│   │       ├── Hubs/                      # SyncHub (/hubs/sync), ISyncNotifier, HubSyncNotifier
 │   │       └── Features/
 │   │           ├── Auth/                  # Login, Refresh, Logout, Me
 │   │           ├── Users/                 # CreateUser, AssignRole, ListUsers, GetUserById, SetDisciplines
 │   │           ├── Projects/              # GetProject, UpdateSettings
-│   │           ├── Folders/               # SyncFromDrive, GetTree, GetFolder, CreateFolder, RenameFolder, SetFolderTarget, UploadFile, DeleteFile
-│   │           ├── Imports/               # StartImport, RunImportStep, GetImportStatus, ListImportBatches
-│   │           ├── Drafts/                # ListDraftDocuments, UpdateDraftDocument, BulkUpdateDrafts, GetPromoteDiff, Promote, RollbackPromote
-│   │           ├── Documents/             # ListDocuments(Midp), GetDocumentById, UpdateDocument, CreateDocument, GenerateDocumentNumber
+│   │           ├── Folders/               # GetTree, GetFolder, CreateFolder, SetFolderTarget, SetFolderCompany, UploadFile, DownloadFile, GetFileWorkbook, TriggerDriveSync, GetDriveStatus
+│   │           ├── Imports/               # GetImportStatus, ListImportBatches  (الاستيراد تلقائي — لا Start/Step)
+│   │           ├── Drafts/                # ListDraftDocuments, UpdateDraftDocument, BulkUpdateDrafts, GetPromoteDiff, Promote, ConvertToLive
+│   │           ├── Documents/             # ListDocuments(Midp), GetDocumentById, UpdateDocument (الطبقة الحية), CreateDocument, GenerateDocumentNumber
 │   │           ├── Tidps/                 # ListTidps, GetTidp, ExportTidp
 │   │           ├── Baseline/              # ListActivities, ImportBaseline, ExportBaseline
 │   │           ├── Lists/                 # Picklists + StatusMappings CRUD
@@ -145,21 +149,28 @@ public interface IDispatcher { Task<T> Send<T>(ICommand<T> c, CancellationToken 
 
 كيانات: `ApplicationUser : IdentityUser<Guid>` (+ FullName, IsActive), `ApplicationRole : IdentityRole<Guid>`, `RefreshToken`.
 
-### 3.2 المجلدات والملفات (محاكاة Drive)
+### 3.2 المجلدات والملفات (مرآة Drive) — v3
 
 ```csharp
 public class Folder { Guid Id; Guid ProjectId; Guid? ParentId; string Name; string Path /*"Qpac_1/TIDPs/Structural"*/;
-    string? DriveFolderId; DataTarget Target = Live; int SortOrder; DateTime? LastSyncedAt; bool IsDeleted; }
+    string? DriveFolderId; DataTarget Target = Live; int SortOrder; DateTime? LastSyncedAt; bool IsDeleted;
+    bool IsCompany; Guid? AuthorId /*FK PicklistItem (Field = Author)*/; }
 public enum DataTarget { Live, Draft }
 
-public class FolderFile { Guid Id; Guid FolderId; string Name; string? DriveFileId; DateTime? DriveModifiedAt; string? Md5;
-    long SizeBytes; FileKind Kind /*Tidp, Midp, Baseline, AconexHistory, Lists, Unknown*/; FileSource Source /*Drive, Upload*/;
-    string? StoragePath /*نسخة محلية في App_Data/files/{id}.xlsx*/; Guid? LastImportBatchId; ImportState State /*NotImported, Imported, Outdated, Failed*/; }
+public class FolderFile { Guid Id; Guid FolderId; string Name; FileKind Kind /*Tidp, Midp, Baseline, AconexHistory, Lists, Picklists, Unknown*/;
+    string? DriveFileId; DateTime? DriveModifiedAt;                 // هوية Drive
+    FileSource ContentSource /*Drive | Upload*/; DateTime ContentModifiedAt; string ContentMd5; long SizeBytes;
+    ImportState State; string? ImportError; Guid? LastImportBatchId; DateTime? LastImportedAt; bool IsDeleted; }
+
+public class FileBlob { Guid FolderFileId /*PK, FK cascade*/; byte[] Content; }   // bytea — لا تخزين على القرص
 ```
 
-- `Kind` يُكتشف تلقائياً من اسم الملف (`-TDP-` → Tidp، `-MDP-` → Midp، يحتوي `Tracker` → AconexHistory/Baseline، …) ويمكن تعديله يدوياً.
-- **الشجرة الجذرية** = `GoogleDrive__RootFolderId` (معرّف مجلد `Qpac_1`). المزامنة تسرد الأبناء تكرارياً وتحدّث `Folder`/`FolderFile` (upsert بـ DriveId، تعليم المحذوف `IsDeleted`)، ثم تنزّل ملفات xlsx إلى `StoragePath`. لا تستورد تلقائياً — الاستيراد فعل مستقل.
-- المستخدم يستطيع إنشاء مجلدات يدوية (بدون DriveFolderId) ورفع ملفات إليها.
+- `Kind` يُكتشف من اسم الملف (`-TDP-` → Tidp، `-MDP-` → Midp، `TRACKER`/`ACONEX` → AconexHistory، …). الاسم غير المعروف يُرفض عند الرفع (400) ويُعلَّم `Failed` عند المزامنة.
+- **هوية الملف** = `(FolderId, lower(Name))` بين الصفوف غير المحذوفة (فهرس فريد مُرشَّح). المزامنة والرفع يحدّثان **نفس الصف**، والأحدث يفوز (`docs/refactor-plan.md` § 3 R2).
+- **الشجرة الجذرية** = `GoogleDrive__RootFolderId`. `DriveSyncWorker` يسرد الأبناء تكرارياً، ينزّل الملف فقط إذا كان أحدث من المحفوظ **و** بصمة md5 مختلفة، ويحفظ البايتات في `FileBlobs`. ما اختفى من Drive يُعلَّم `IsDeleted` — لكن المرفوع يدوياً لا يُحذف أبداً.
+- **الاستيراد تلقائي**: كل ملف جديد أو متغيّر يُدرَج في `WorkQueue` ويستورده `ImportWorker` (القرار D5).
+- المستخدم يستطيع إنشاء مجلدات يدوية (بدون `DriveFolderId`) ورفع ملفات إليها. إنشاء مجلد **داخل** مجلد Drive مرفوض (400) لأنه سيختفي في الاستطلاع التالي. إعادة التسمية والحذف أُزيلت (القرار D6).
+- **المجلد شركة** إذا `IsCompany = true`، ويحمل `AuthorId` من قائمة Author.
 
 ### 3.3 الطبقة الحية (Live)
 `Project, Discipline, PicklistItem, BaselineActivity, Tidp, Document, DataExchange, AconexRevision, StatusMapping, ImportBatch, DocumentSnapshot, AuditLog` — تعريفها في القسم 5.2 أدناه. إضافات:
@@ -175,17 +186,18 @@ public class TidpDraft     { ... نفس حقول Tidp ...; Guid FolderFileId; Gu
 public class DocumentDraft { ... نفس حقول Document ...; Guid TidpDraftId; Guid FolderFileId; Guid ImportBatchId;
     DraftRowState State /*New, Modified, Unchanged, Deleted, Conflict*/; Guid? LiveDocumentId; string? ConflictReason; bool IsDuplicate; }
 public class DataExchangeDraft { ... }
-public class PromoteBatch  { Guid Id; Guid FolderId; Guid FolderFileId; DateTime At; string By; int Added, Updated, Deleted, Skipped; string SnapshotJson /*نسخة الصفوف الحية قبل التغيير للتراجع*/; bool RolledBack; }
+public class PromoteBatch  { Guid Id; Guid FolderId; Guid FolderFileId; DateTime At; string By; int Added, Updated, Deleted, Skipped; }
 ```
 
-**سلوك الاستيراد حسب Target المجلد:**
-- Target = **Live** → الاستيراد يكتب في `Tidp/Document/DataExchange` مباشرة (upsert بـ DocumentNumber، AuditLog لكل حقل تغيّر).
-- Target = **Draft** → الاستيراد يكتب في `*Draft`، ويحسب `State` لكل صف بمقارنته مع Live (New/Modified/Unchanged)، ويعلّم `IsDuplicate` داخل الملف.
+**سلوك الاستيراد — v3 (`docs/refactor-plan.md` § 3 R3/R4/R5):**
+- محتوى مصدره **Drive** (`ContentSource = Drive`) يُستورد دائماً إلى **Draft**، أياً كان Target المجلد. Drive لا يكتب الطبقة الحية أبداً.
+- محتوى مصدره **رفع يدوي** يتبع `folder.Target`: Live → `Tidp/Document/DataExchange` مباشرة (upsert بـ DocumentNumber، AuditLog لكل حقل تغيّر)؛ Draft → `*Draft` مع حساب `State` لكل صف بمقارنته مع Live وتعليم `IsDuplicate` داخل الملف.
+- سجل Aconex و Baseline و Picklists و Lists **دائماً Live**، حتى لو جاءت من مصنّف في مجلد Draft.
 
 **Promote (Draft → Live)** لملف/مجلد:
 1. `GetPromoteDiff` يعيد: Added, Modified (مع الحقول القديمة/الجديدة), Deleted (موجود Live من نفس الملف وغير موجود في المسودة — يُحذف فقط إذا اختار المستخدم `deleteMissing`), Conflicts (وثيقة موجودة Live من **ملف آخر** بنفس الرقم، أو Live عُدّل بعد تاريخ الاستيراد).
-2. `Promote` ينفّذ داخل transaction واحدة، يحفظ `PromoteBatch.SnapshotJson`، يكتب AuditLog، يعلّم Drafts `Unchanged`، ثم يطلب إعادة حساب Snapshots.
-3. `RollbackPromote` يعيد الصفوف من SnapshotJson.
+2. `Promote` ينفّذ داخل transaction واحدة، يكتب `PromoteBatch` و AuditLog، يعلّم Drafts `Unchanged`، ثم يُدرِج إعادة الحساب في الطابور.
+3. **لا تراجع** (القرار D7): `AuditLog` هو أثر التراجع. بدلاً منه `ConvertToLive(folderId)` يرفع كل ملفات الشجرة ثم يقلب Target إلى Live، وهو قابل للتكرار — Drive يواصل تحديث المسودات ويظهر ذلك كـ `hasNewerDraft`.
 
 ---
 
@@ -199,8 +211,10 @@ public interface IDriveClient {
 ```
 - `ApiKeyDriveClient` (افتراضي). خطأ 403/404 → رسالة واضحة "المجلد غير مشارك بوضع Anyone with the link".
 - `ServiceAccountDriveClient` (لاحقاً، نفس الواجهة، `Google.Apis.Drive.v3`).
-- `SyncFromDrive` يعمل بخطوات: كل استدعاء يعالج مجلداً واحداً ويعيد `nextFolderId`، الواجهة تكرر.
-- المزامنة لا تحذف ملفات محلية مرفوعة يدوياً.
+- **الواجهة قراءة فقط** ولن تُضاف إليها كتابة (القرار D1): عضوان لا ثالث لهما.
+- **المزامنة عامل مستضاف** (`DriveSyncWorker` + `DriveSyncService`، `docs/refactor-plan.md` § 5.3): استعراض عرضي كامل للشجرة من الجذر، مرة كل `GoogleDrive:PollHours` وعند الطلب من `POST /api/projects/{id}/drive/sync` (يعيد 202). التقدّم على `/hubs/sync`.
+- المزامنة لا تحذف ملفات مرفوعة يدوياً، ولا تستبدل بايتات أحدث منها.
+- كل ملف جديد أو متغيّر يُستورد **تلقائياً** (القرار D5) — نص PLAN السابق «لا تستورد تلقائياً» ملغى.
 
 ---
 
@@ -382,8 +396,13 @@ public enum UnifiedStatus { Approved, Rejected, UnderReview, Withdrawn }
 
 public class ImportBatch { Guid Id; Guid ProjectId; ImportKind Kind /*Tidp, Midp, AconexHistory, Baseline*/; string FileName; DateTime ImportedAt; string ImportedBy; int RowsRead; int RowsInserted; int RowsUpdated; int RowsSkipped; string? Log; }
 
-public class DocumentSnapshot {                  // ناتج المحرك — يُعاد بناؤه بعد كل استيراد (القسم 5.4.1)
-    Guid DocumentId; Guid ProjectId; DateTime ComputedAt;
+public class DocumentSnapshot {                  // صف Tracker مُجسَّد — يُعاد بناؤه بعد كل استيراد (القسم 5.4.1)
+    Guid DocumentId;                             // معرّف الصف المصدر: Document.Id (Live) أو DocumentDraft.Id (Draft) — بلا FK
+    Guid ProjectId; DataTarget Layer; Guid? FolderFileId; DateTime ComputedAt;
+    // أعمدة العرض منسوخة من الصف المصدر حتى لا يحتاج Tracker إلى أي join
+    string DocumentNumber, Title, Type /*F04*/, Discipline /*CorporateDiscipline*/,
+           Building /*F07*/, Level /*F08B*/, Trade /*F05*/; string? Author /*Exchange 1*/;
+    DateTime? DeliveryMilestone; string? ActivityId; string? PackageName;
     int? SubmissionsCount; string? Revision; string? AconexStatus; UnifiedStatus? Status;
     DateTime? SubmissionDate; DateTime? DateModified; string? Transmittal;
     DateTime? PlannedStart; DateTime? PlannedFinish; DateTime? ActualStart; DateTime? ActualFinish;
@@ -428,6 +447,8 @@ public class AuditLog { Guid Id; Guid ProjectId; string EntityName; Guid EntityI
 ### 5.4 المحرك الحسابي (Dip.Application/Engine) — ترجمة المعادلات حرفياً
 
 كل الدوال تأخذ `IReadOnlyList<Document>`, `IReadOnlyList<AconexRevision>`, `IReadOnlyList<BaselineActivity>`, `Project` وتعيد نتائج نقية (pure functions). لا وصول لقاعدة البيانات داخل المحرك.
+
+> **v3 — مجموعة الوثائق الفعّالة (`docs/refactor-plan.md` § 3 R8):** المدخل `Documents` لم يعد جدول Live وحده. `EffectiveDocumentLoader` يجمع: صفوف `Document` لملفات هدفها Live (وأي `Document` بلا `FolderFileId`)، مع صفوف `DocumentDraft` لملفات هدفها Draft (باستثناء `IsDuplicate`)، ثم يزيل التكرار حسب `DocumentNumber` — يفوز الصف صاحب الملف الأحدث (`ContentModifiedAt`)، وعند التساوي يفوز Live. هكذا تظهر الشركة التي ما زالت تعمل في Drive في التقارير كما تظهر الشركة التي تعمل في النظام.
 
 #### 5.4.1 Tracker — لكل Document
 
@@ -536,12 +557,12 @@ CurrentWeek = WeekEnd(ReportDate)
 - الحفاظ على الأصفار: `Revision` → `PadLeft(2,'0')`, `Sequence` → `PadLeft(4,'0')`, `Zone` → `PadLeft(2,'0')`.
 - كل استيراد = `ImportBatch` (FolderFileId, Kind, Target, RowsRead/Inserted/Updated/Skipped, Warnings JSON).
 - Idempotent.
-- **مجزّأ**: `StartImport` يقرأ الملف، يحفظ الصفوف الخام مؤقتاً (`ImportStagingRow` JSON) ويعيد JobId؛ `RunImportStep` يعالج 2000 صف ويعيد `{processed,total,done}`؛ عند `done` يشغّل `Recalculate` (أيضاً مجزّأ إن لزم).
-- بعد أي استيراد Live أو Promote → إعادة بناء `DocumentSnapshot`.
+- **تلقائي، لا مجزّأ من المتصفح** (v3): `FileImportService` يقرأ البايتات من `FileBlob` عبر `MemoryStream` — لا مسار ملف، لا `ImportStagingRow` — ويوجّه الشيتات حسب `FileKind` (`docs/refactor-plan.md` § 3 R5): TIDP → `TIDP_Sheet`؛ MIDP → `MIDP` + `Aconex History` إن وُجد؛ Tracker → `SHD_History` + `Baseline` + `Lists`؛ وهكذا. كل مستورد يتلقى `Stream`.
+- بعد كل استيراد → `Recalculate` في الطابور، وإعادة بناء `DocumentSnapshot` فوق المجموعة الفعّالة.
 
 | Importer | المصدر | مفتاح Upsert | ملاحظات |
 |---|---|---|---|
-| `PicklistImporter` | `Picklists` | (Field, Code) | |
+| `PicklistImporter` | `Pick_Lists` | (Field, Code) | 17 قائمة، كلٌّ تُحدَّد بنص عنوانها في الصف 5 (`docs/refactor-plan.md` § 7). الأكواد المحذوفة ناعماً لا تعود بالاستيراد. |
 | `BaselineImporter` | `Baseline` | ActivityCode | خيار Replace |
 | `TidpImporter` | `TIDP_Sheet` | DocumentNumber (مُولَّد) | Discipline من الهيدر؛ يكتب Live أو Draft حسب Target |
 | `MidpImporter` | `MIDP` | DocumentNumber | Discipline من CORPORATE DISCIPLINE؛ Live أو Draft |
@@ -576,27 +597,28 @@ frontend/
 │   ├── shared/
 │   │   ├── api/             # axiosClient (baseURL من VITE_API_URL, interceptors: bearer + refresh), generated types (openapi-typescript من swagger.json)
 │   │   ├── auth/            # useAuth, RequireAuth, RequirePermission, tokenStorage (memory + httpOnly refresh cookie fallback)
-│   │   ├── ui/              # shadcn components (button, table, dialog, sheet, tabs, badge, tree...)
-│   │   └── lib/             # utils, date formatting (dayjs), csv/xlsx download
+│   │   ├── ui/              # shadcn components (button, table, dialog, sheet, tabs, badge, toast, tree...)
+│   │   ├── realtime/        # syncHub (@microsoft/signalr), SyncHubProvider, useSyncEvent, invalidation map
+│   │   └── lib/             # utils, date formatting, csv/xlsx download
 │   └── features/
 │       ├── auth/            # LoginPage
-│       ├── folders/         # FolderExplorerPage (شجرة يسار + محتوى يمين), FolderTree, FileList, FolderTargetBadge, SyncDriveButton, UploadDialog
-│       ├── imports/         # ImportDialog (اختيار Kind + Target + تقدم مجزّأ), ImportHistoryTable
-│       ├── drafts/          # DraftReviewPage (TanStack Table قابل للتعديل inline), PromoteDialog (Diff: tabs Added/Modified/Deleted/Conflicts), RollbackButton
-│       ├── tidps/           # TidpsPage = يعيد استخدام folders explorer مقيّداً بمجلد TIDPs، فتح ملف → DraftReview أو Live grid
+│       ├── explorer/        # ExplorerPage (/tidps): شجرة يسار + شبكة بلاطات يمين، ExplorerToolbar, TileGrid, FolderTile, FileTile,
+│       │                    # ContextMenu, UploadDialog, ConvertToLiveDialog, CompanyDialog
+│       ├── workbook/        # WorkbookPage (/files/:fileId): Grid افتراضي + FormulaBar + SheetTabs + StatusBar + محرر خلية
+│       ├── drafts/          # DraftReviewPage (جدول قابل للتعديل inline), PromoteDialog (Diff: tabs Added/Modified/Deleted/Conflicts)
 │       ├── midp/            # MidpPage (grid + filters + export)
 │       ├── baseline/        # BaselinePage (activities table, import/replace, used/unused)
-│       ├── lists/           # ListsPage (Picklists tabs + StatusMapping)
+│       ├── lists/           # ListsPage: 18 تبويباً (17 قائمة + Status mapping) مع إضافة/تعديل/حذف ناعم/استعادة/ترتيب
 │       ├── tracker/         # TrackerPage (server paging, filters, document detail drawer مع كل المراجعات)
-│       ├── summary/         # SummaryPage: tabs Dashboard | Corporate | Baseline | EVM (Recharts: S-curve, bars, SPI)
-│       ├── findings/        # ControlFindingsPage (4 tabs + export)
+│       ├── dashboard/       # DashboardPage (/): tabs Overview | Corporate | Baseline | Control Findings | EVM (Recharts)
 │       └── admin/           # UsersPage, RolesPage, ProjectSettingsPage
 ├── .env.example             # VITE_API_URL=
 └── vercel.json              # rewrites SPA
 ```
 
-- **قائمة الجانب (Sidebar)**: TIDPs · Summary · MIDP · Baseline · Lists · Control Findings · Tracker · (Admin: Folders/Sync, Users, Settings). كل عنصر مخفي إذا لم تتوفر الصلاحية.
-- **صفحة TIDPs** (الأهم): مستكشف مثل Drive — عمود شجرة قابل للطي (shadcn `Collapsible` + أيقونات مجلد/ملف)، breadcrumb، محتوى المجلد كبطاقات أو قائمة، على كل مجلد قائمة سياق: Set Target (Live/Draft)، Sync، Upload، New folder، Rename. على كل ملف: Import، View، Export، وإذا مجلده Draft: **Promote to Live** (يفتح Diff). شارة ملونة تبيّن Target والحالة (Imported/Outdated/Failed).
+- **قائمة الجانب (Sidebar)**: Dashboard · TIDPs · MIDP · Baseline · Tracker · Lists · Users · Settings. كل عنصر مخفي إذا لم تتوفر الصلاحية، و Dashboard نفسه يتطلب `reports.view` لأنه صار يحوي كل التقارير (القرار D8).
+- **صفحة TIDPs** (الأهم): مستكشف مثل Drive — شجرة يسار، شبكة بلاطات يمين (المجلدات أولاً ثم الملفات)، breadcrumb قابل للنقر، نقر مزدوج يفتح، أسهم لوحة المفاتيح، قائمة سياق بالزر الأيمن، وسحب وإفلات للرفع. شريط الأدوات: Upload · Sync now · Target · Company/Author · Convert to Live · New folder (خارج مجلدات Drive فقط) · شارة حالة Drive. البلاطة تدور أثناء الاستيراد وتتغيّر شارتها عند انتهائه — كله عبر `/hubs/sync`.
+- **فتح ملف** يفتح جدول بيانات (`/files/:fileId`) بأعمدة A–AH كما في المصنّف، العمود A للقراءة فقط لأن الخادم يعيد تركيبه من L..U.
 - الأنماط: shadcn افتراضي + Tailwind، وضع داكن/فاتح، الجداول بـ TanStack Table + virtualization للجداول الكبيرة.
 - النشر Vercel: `VITE_API_URL=https://<aspmonster-domain>/api`.
 
@@ -613,18 +635,18 @@ frontend/
 **1.3**: «Features/Auth: Login (JWT + refresh), Refresh, Logout, Me. Features/Users: CRUD + AssignRole + SetDisciplines. Authorization behavior بالصلاحيات. اختبارات تكامل: Viewer لا يستطيع `import.run`، Editor بـ `discipline:STL` لا يعدّل STR.»
 
 ### المرحلة 2 — المجلدات و Drive
-**2.1**: «`IDriveClient` + `ApiKeyDriveClient` (HttpClient، اختبار بـ HTTP mock). Features/Folders: SyncFromDrive (مجزّأ), GetTree, GetFolder, CreateFolder, RenameFolder, SetFolderTarget, UploadFile (يحفظ في App_Data/files ويكتشف Kind), DeleteFile.»
+**2.1** ~~(ملغاة بـ v3 — انظر R1)~~: `IDriveClient` + `ApiKeyDriveClient` باقيان. المزامنة صارت `DriveSyncWorker`/`DriveSyncService`، والرفع يكتب `FileBlob` لا `App_Data/files`، و `RenameFolder`/`DeleteFile`/`DeleteFolder` أُزيلت.
 
 ### المرحلة 3 — الاستيراد
 **3.1**: Baseline + Picklists + Lists importers + اختبارات (`QP.M.GN.GEN.GEN.1400` Submittal ينتهي 2025-10-30).
 **3.2**: TidpImporter (Live و Draft) + اختبار `samples/TIDP-STL.xlsx`: Structural، أول رقم `QF01012-NES-C04518-SDW-STL-00-Z00000-0ZZ0004`، الأصفار محفوظة، وفي وضع Draft كل الصفوف State=New على قاعدة فارغة.
 **3.3**: MidpImporter + اختبار: عدد الوثائق = عدد صفوف الشيت (**15,885** — راجع `docs/excel-analysis.md`)، وتعليم المكررات `IsDuplicate`.
 **3.4**: AconexHistoryImporter + اختبارات النرمَلة (`QF01012- NES- C04518- SDW- STR- 00- BLAD05- 2FL0101-PDF` → بدون مسافات وبدون `-PDF`؛ تقرير BSB → `XXX`)، وعينة 100 صف تطابق IsTerminated/IsLatest/InMidp المخزنة في `Tracker.xlsx`.
-**3.5**: Features/Imports المجزّأ (StartImport/RunImportStep/GetImportStatus) + اختبار تكامل يستورد MIDP كاملاً عبر الخطوات.
+**3.5** ~~(ملغاة بـ v3 — انظر R1)~~: الاستيراد صار تلقائياً في `ImportWorker`؛ بقي `GetImportStatus` و `ListImportBatches` فقط، واختبار التكامل يرفع المصنّف وينتظر العامل.
 
 ### المرحلة 4 — المسودة والنشر
 **4.1**: Features/Drafts: ListDraftDocuments (paged), UpdateDraftDocument (مع توليد الرقم والتحقق من التكرار), BulkUpdate.
-**4.2**: GetPromoteDiff + Promote + RollbackPromote + اختبارات: (أ) استيراد Draft ثم Promote على قاعدة فارغة = Added لكل الصفوف؛ (ب) تعديل صف ثم Promote = Modified واحد مع AuditLog؛ (ج) تعارض مع ملف آخر → Conflict ولا يُكتب؛ (د) Rollback يعيد الحالة السابقة.
+**4.2**: GetPromoteDiff + Promote (+ `ConvertToLive` في v3) + اختبارات: (أ) استيراد Draft ثم Promote على قاعدة فارغة = Added لكل الصفوف؛ (ب) تعديل صف ثم Promote = Modified واحد مع AuditLog؛ (ج) تعارض مع ملف آخر → Conflict ولا يُكتب. البند (د) Rollback ~~ملغى بـ v3 (القرار D7)~~ — `AuditLog` هو أثر التراجع.
 
 ### المرحلة 5 — المحرك
 **5.1**: TrackerEngine + اختبار 200 وثيقة عشوائية ضد شيت Tracker (فرق صفر، التواريخ < 1 ثانية).
@@ -647,16 +669,19 @@ frontend/
 
 ### المرحلة 6 — الواجهة
 **6.1**: scaffold Vite React TS + Tailwind + shadcn + router + auth (login, refresh, guards) + layout + sidebar بالصلاحيات.
-**6.2**: صفحة TIDPs / Folder Explorer كاملة (شجرة، سياق، Target، Sync، Upload، Import progress).
+**6.2** ~~(أُعيدت كتابتها في R4/R5)~~: صفحة TIDPs صارت `features/explorer` بشبكة بلاطات وقوائم سياق وتقدّم فوري عبر SignalR، وفتح الملف صار `features/workbook`.
 **6.3**: DraftReview + PromoteDialog (Diff) + Rollback.
 **6.4**: MIDP, Baseline, Lists, Tracker (+ document drawer).
-**6.5**: Summary (Dashboard, Corporate, Baseline, EVM) + Control Findings.
+**6.5** ~~(أُعيدت كتابتها في R4)~~: Summary و Control Findings اندمجتا في `DashboardPage` على `/` بخمسة تبويبات (القرار D8).
 **6.6**: Admin (Users, Roles, Settings). Vitest للمكونات الحرجة (FolderTree, PromoteDialog).
 
 ### المرحلة 7 — النشر
 **7.1**: `web.config` للـ IIS in-process، `backend-publish.yml` ينتج zip، دليل نشر ASPMonster في `docs/deploy.md` (env vars في Plesk، شهادة، CORS).
 **7.2**: Vercel (`vercel.json`, env) + `frontend-ci.yml`.
 **7.3**: Health endpoint `/health` (DB + Drive reachability)، Serilog files، rate limiting على Auth.
+
+### v3 (2026-09-08) — `docs/refactor-plan.md`
+R1 نواة الخادم (المخطط، لا قرص، Drive قراءة فقط، العمّال، الاستيراد التلقائي) · R2 الأهداف والشركات والتحويل والمجموعة الفعّالة و Tracker المُجسَّد وتعديل Live · R3 خلفية القوائم · R4 المستكشف والزمن الفعلي و Dashboard · R5 عارض المصنّف · R6 صفحة القوائم · R7 التوثيق. التفاصيل والانحرافات في `docs/refactor-log.md`.
 
 ### لاحقاً
 Clash importer (Navisworks/ACC CSV) + Model health importer + ActualEffort (CPI) + Service Account Drive + Aconex API.
@@ -671,7 +696,7 @@ Clash importer (Navisworks/ACC CSV) + Model health importer + ActualEffort (CPI)
 4. عند التعارض بين PLAN.md والإكسل: الإكسل هو الصحيح؛ سجّل الفرق واقترح تعديل PLAN.md.
 5. لا secrets في المستودع. `appsettings.json` يحوي مفاتيح فارغة فقط؛ القيم من env: `ConnectionStrings__Default`, `Jwt__Key`, `GoogleDrive__ApiKey`, `GoogleDrive__RootFolderId`, `Seed__AdminEmail`, `Seed__AdminPassword`, `Cors__Origins`.
 6. لا مكتبة جديدة دون ذكر السبب.
-7. الأداء: استيراد 25 ألف revision ومحرك كامل < 60 ثانية مجزّأة على استضافة مشتركة. `AsNoTracking`, `AddRange` كل 2000 صف، قواميس بدل بحث خطي، `ExecuteUpdate/ExecuteDelete` حيث يناسب.
+7. الأداء: استيراد 25 ألف revision ومحرك كامل < 60 ثانية داخل العامل المستضاف. `AsNoTracking`, `AddRange` كل 2000 صف، قواميس بدل بحث خطي، `ExecuteUpdate/ExecuteDelete` حيث يناسب.
 8. لا كود UI قبل مرور اختبار المحرك/الـ endpoint المقابل.
 9. كل endpoint موثق في Swagger مع مثال؛ أنواع الواجهة تُولَّد من `swagger.json` (`npm run gen:api`).
 
