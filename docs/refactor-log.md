@@ -333,3 +333,29 @@ Test Files  22 passed (22)
 Tests       108 passed (108)
 ```
 `npm run lint`: 0 errors, 0 warnings. `npm run typecheck`: clean. `npm run build`: succeeds.
+
+---
+
+## R6 — Lists page
+
+### What changed
+`features/lists/` becomes an editor rather than a read-only listing:
+- **`ListsPage`**: 18 tabs — one per `PicklistField` in the workbook's own order, named the way the
+  sheet names them (Document types, Area / Zone, Suitability status, Corporate discipline, …) —
+  plus Status mapping, with a "Show deleted" toggle over the whole page.
+- **`PicklistTable`**: an "Add item" row at the top, inline edit (pencil → inputs → save/cancel),
+  ▲▼ reordering that posts the whole order, delete behind a `ConfirmDialog` that says what a delete
+  means, and greyed deleted rows with a Restore button when they are shown. Single-column lists
+  (Authoring software, File / exchange format, Scope area, Scale, Corporate discipline, Author) drop
+  the description column, matching the workbook.
+- **`StatusMappingTable`** mirrors it with a `UnifiedStatus` select and the Legacy checkbox.
+- **`api.ts`** covers the nine list endpoints; every mutation invalidates both the live and the
+  include-deleted view.
+- Viewers without `lists.manage` get the same tables with no controls.
+
+### Test summary
+```
+Test Files  24 passed (24)
+Tests       117 passed (117)
+```
+`npm run lint`: 0 errors, 0 warnings. `npm run typecheck`: clean. `npm run build`: succeeds.
