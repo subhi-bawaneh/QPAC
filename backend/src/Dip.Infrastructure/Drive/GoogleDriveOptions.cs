@@ -12,4 +12,10 @@ public sealed class GoogleDriveOptions
 
     // How long a single files.list / files.get is allowed to take.
     public int RequestTimeoutSeconds { get; set; } = 60;
+
+    // How often DriveSyncWorker polls. 0 or less disables the timer (tests).
+    public double PollHours { get; set; } = 5;
+
+    // Grace period before the first poll so the host finishes booting first.
+    public int StartupDelaySeconds { get; set; } = 30;
 }

@@ -26,7 +26,7 @@ public class ListsImporterTests : IClassFixture<ImporterFixture>
 
         var result = await importer.ImportAsync(
             _fixture.QpacProjectId,
-            SampleFiles.Path("Tracker.xlsx"),
+            SampleFiles.Open("Tracker.xlsx"),
             CancellationToken.None);
 
         // Tracker!Lists has ~10 entries. Seeder already covered most as legacy or plural

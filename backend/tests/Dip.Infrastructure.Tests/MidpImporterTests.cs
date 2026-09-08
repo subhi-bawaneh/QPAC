@@ -40,7 +40,7 @@ public class MidpImporterTests : IClassFixture<ImporterFixture>
 
         var result = await importer.ImportAsync(
             _fixture.QpacProjectId,
-            SampleFiles.Path("MIDP.xlsx"),
+            SampleFiles.Open("MIDP.xlsx"),
             DataTarget.Live,
             folderFileId: null,
             importBatchId: null,

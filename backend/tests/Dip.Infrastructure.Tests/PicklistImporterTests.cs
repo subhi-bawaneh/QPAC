@@ -26,7 +26,7 @@ public class PicklistImporterTests : IClassFixture<ImporterFixture>
 
         var result = await importer.ImportAsync(
             _fixture.QpacProjectId,
-            SampleFiles.Path("PickLists.xlsx"),
+            SampleFiles.Open("PickLists.xlsx"),
             CancellationToken.None);
 
         result.RowsRead.Should().BeGreaterThan(50, "PickLists.xlsx has dozens of codes across many FIELD columns");

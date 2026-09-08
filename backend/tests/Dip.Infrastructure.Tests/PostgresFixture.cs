@@ -13,8 +13,8 @@ namespace Dip.Infrastructure.Tests;
 // the whole suite.
 //
 // Recommended setup:
-//   1. Create a dedicated Neon *branch* or *database* — never point tests at prod.
-//   2. Export TEST_POSTGRES_CONNECTION="Host=...;Database=...;Username=...;Password=...;SSL Mode=Require"
+//   1. Run a local scratch Postgres — never Neon, which TestConnectionGuard refuses.
+//   2. Export TEST_POSTGRES_CONNECTION="Host=localhost;Port=5432;Database=dip_test;Username=postgres;Password=postgres"
 //      before running dotnet test.
 public sealed class PostgresFixture : IAsyncLifetime
 {
@@ -24,6 +24,7 @@ public sealed class PostgresFixture : IAsyncLifetime
     public PostgresFixture()
     {
         _configuredConnectionString = Environment.GetEnvironmentVariable("TEST_POSTGRES_CONNECTION");
+        TestConnectionGuard.Assert(_configuredConnectionString);
         _schema = "dip_test_" + Guid.NewGuid().ToString("N")[..12];
     }
 

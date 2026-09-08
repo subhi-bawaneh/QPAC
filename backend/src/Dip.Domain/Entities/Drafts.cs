@@ -79,7 +79,8 @@ public class DataExchangeDraft : Entity
     public DateTime? ExchangeDate { get; set; }
 }
 
-// Records a Promote operation so it can be rolled back or audited.
+// Records a Promote operation for audit. There is no rollback (decision D7) —
+// AuditLog carries the field-level undo trail.
 public class PromoteBatch : Entity
 {
     public Guid ProjectId { get; set; }
@@ -91,6 +92,4 @@ public class PromoteBatch : Entity
     public int Updated { get; set; }
     public int Deleted { get; set; }
     public int Skipped { get; set; }
-    public string SnapshotJson { get; set; } = "{}";                    // pre-promotion state for rollback
-    public bool RolledBack { get; set; }
 }

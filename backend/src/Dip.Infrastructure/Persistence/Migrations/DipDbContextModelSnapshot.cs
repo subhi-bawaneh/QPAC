@@ -494,7 +494,6 @@ namespace Dip.Infrastructure.Persistence.Migrations
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
                         .IsRequired()
-                        .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("bytea");
 
                     b.Property<string>("Scale")
@@ -669,7 +668,6 @@ namespace Dip.Infrastructure.Persistence.Migrations
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
                         .IsRequired()
-                        .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("bytea");
 
                     b.Property<string>("Scale")
@@ -717,11 +715,16 @@ namespace Dip.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("Dip.Domain.Entities.DocumentSnapshot", b =>
                 {
                     b.Property<Guid>("DocumentId")
+                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<string>("AconexStatus")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
+
+                    b.Property<string>("ActivityId")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
 
                     b.Property<DateTime?>("ActualFinish")
                         .HasColumnType("timestamp without time zone");
@@ -729,11 +732,50 @@ namespace Dip.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("ActualStart")
                         .HasColumnType("timestamp without time zone");
 
+                    b.Property<string>("Author")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Building")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
                     b.Property<DateTime>("ComputedAt")
                         .HasColumnType("timestamp without time zone");
 
                     b.Property<DateTime?>("DateModified")
                         .HasColumnType("timestamp without time zone");
+
+                    b.Property<DateTime?>("DeliveryMilestone")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("Discipline")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("DocumentNumber")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid?>("FolderFileId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Layer")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<string>("Level")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<string>("PackageName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
 
                     b.Property<DateTime?>("PlannedFinish")
                         .HasColumnType("timestamp without time zone");
@@ -758,15 +800,52 @@ namespace Dip.Infrastructure.Persistence.Migrations
                     b.Property<int?>("SubmissionsCount")
                         .HasColumnType("integer");
 
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("Trade")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
                     b.Property<string>("Transmittal")
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
                     b.HasKey("DocumentId");
 
-                    b.HasIndex("ProjectId");
+                    b.HasIndex("FolderFileId");
+
+                    b.HasIndex("ProjectId", "Discipline");
+
+                    b.HasIndex("ProjectId", "DocumentNumber");
+
+                    b.HasIndex("ProjectId", "Layer");
+
+                    b.HasIndex("ProjectId", "Status");
 
                     b.ToTable("DocumentSnapshots", (string)null);
+                });
+
+            modelBuilder.Entity("Dip.Domain.Entities.FileBlob", b =>
+                {
+                    b.Property<Guid>("FolderFileId")
+                        .HasColumnType("uuid");
+
+                    b.Property<byte[]>("Content")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.HasKey("FolderFileId");
+
+                    b.ToTable("FileBlobs", (string)null);
                 });
 
             modelBuilder.Entity("Dip.Domain.Entities.Folder", b =>
@@ -775,9 +854,15 @@ namespace Dip.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("AuthorId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("DriveFolderId")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
+
+                    b.Property<bool>("IsCompany")
+                        .HasColumnType("boolean");
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean");
@@ -811,6 +896,8 @@ namespace Dip.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("AuthorId");
+
                     b.HasIndex("DriveFolderId");
 
                     b.HasIndex("ParentId");
@@ -827,6 +914,19 @@ namespace Dip.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("ContentMd5")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime>("ContentModifiedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("ContentSource")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
                     b.Property<string>("DriveFileId")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
@@ -837,6 +937,13 @@ namespace Dip.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("FolderId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("ImportError")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("Kind")
                         .IsRequired()
                         .HasMaxLength(30)
@@ -845,37 +952,36 @@ namespace Dip.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("LastImportBatchId")
                         .HasColumnType("uuid");
 
-                    b.Property<string>("Md5")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
+                    b.Property<DateTime?>("LastImportedAt")
+                        .HasColumnType("timestamp without time zone");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
 
+                    b.Property<string>("NameLower")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasComputedColumnSql("lower(\"Name\")", true);
+
                     b.Property<long>("SizeBytes")
                         .HasColumnType("bigint");
-
-                    b.Property<string>("Source")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)");
 
                     b.Property<string>("State")
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
-                    b.Property<string>("StoragePath")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
                     b.HasKey("Id");
 
                     b.HasIndex("DriveFileId");
 
-                    b.HasIndex("FolderId", "Name");
+                    b.HasIndex("FolderId", "NameLower")
+                        .IsUnique()
+                        .HasDatabaseName("IX_FolderFiles_FolderId_NameLower_Active")
+                        .HasFilter("NOT \"IsDeleted\"");
 
                     b.ToTable("FolderFiles", (string)null);
                 });
@@ -942,36 +1048,6 @@ namespace Dip.Infrastructure.Persistence.Migrations
                     b.ToTable("ImportBatches", (string)null);
                 });
 
-            modelBuilder.Entity("Dip.Domain.Entities.ImportStagingRow", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Error")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
-
-                    b.Property<Guid>("ImportBatchId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("PayloadJson")
-                        .IsRequired()
-                        .HasColumnType("jsonb");
-
-                    b.Property<bool>("Processed")
-                        .HasColumnType("boolean");
-
-                    b.Property<int>("RowNumber")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ImportBatchId", "Processed");
-
-                    b.ToTable("ImportStagingRows", (string)null);
-                });
-
             modelBuilder.Entity("Dip.Domain.Entities.PicklistItem", b =>
                 {
                     b.Property<Guid>("Id")
@@ -983,6 +1059,9 @@ namespace Dip.Infrastructure.Persistence.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
 
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp without time zone");
+
                     b.Property<string>("Description")
                         .IsRequired()
                         .HasMaxLength(300)
@@ -993,6 +1072,9 @@ namespace Dip.Infrastructure.Persistence.Migrations
                         .HasMaxLength(40)
                         .HasColumnType("character varying(40)");
 
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
                     b.Property<Guid>("ProjectId")
                         .HasColumnType("uuid");
 
@@ -1002,7 +1084,8 @@ namespace Dip.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("ProjectId", "Field", "Code")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("NOT \"IsDeleted\"");
 
                     b.ToTable("PicklistItems", (string)null);
                 });
@@ -1107,15 +1190,8 @@ namespace Dip.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("ProjectId")
                         .HasColumnType("uuid");
 
-                    b.Property<bool>("RolledBack")
-                        .HasColumnType("boolean");
-
                     b.Property<int>("Skipped")
                         .HasColumnType("integer");
-
-                    b.Property<string>("SnapshotJson")
-                        .IsRequired()
-                        .HasColumnType("jsonb");
 
                     b.Property<int>("Updated")
                         .HasColumnType("integer");
@@ -1138,6 +1214,12 @@ namespace Dip.Infrastructure.Persistence.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
                     b.Property<bool>("IsLegacy")
                         .HasColumnType("boolean");
 
@@ -1152,7 +1234,8 @@ namespace Dip.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("ProjectId", "AconexStatus")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("NOT \"IsDeleted\"");
 
                     b.ToTable("StatusMappings", (string)null);
                 });
@@ -1199,7 +1282,6 @@ namespace Dip.Infrastructure.Persistence.Migrations
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
                         .IsRequired()
-                        .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("bytea");
 
                     b.Property<string>("SourceFileName")
@@ -1270,7 +1352,6 @@ namespace Dip.Infrastructure.Persistence.Migrations
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
                         .IsRequired()
-                        .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("bytea");
 
                     b.Property<string>("SourceFileName")
@@ -1649,25 +1730,33 @@ namespace Dip.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Dip.Domain.Entities.DocumentSnapshot", b =>
                 {
-                    b.HasOne("Dip.Domain.Entities.Document", "Document")
-                        .WithOne()
-                        .HasForeignKey("Dip.Domain.Entities.DocumentSnapshot", "DocumentId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
                     b.HasOne("Dip.Domain.Entities.Project", "Project")
                         .WithMany()
                         .HasForeignKey("ProjectId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("Document");
-
                     b.Navigation("Project");
+                });
+
+            modelBuilder.Entity("Dip.Domain.Entities.FileBlob", b =>
+                {
+                    b.HasOne("Dip.Domain.Entities.FolderFile", "FolderFile")
+                        .WithOne("Blob")
+                        .HasForeignKey("Dip.Domain.Entities.FileBlob", "FolderFileId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("FolderFile");
                 });
 
             modelBuilder.Entity("Dip.Domain.Entities.Folder", b =>
                 {
+                    b.HasOne("Dip.Domain.Entities.PicklistItem", "Author")
+                        .WithMany()
+                        .HasForeignKey("AuthorId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("Dip.Domain.Entities.Folder", "Parent")
                         .WithMany("Children")
                         .HasForeignKey("ParentId")
@@ -1678,6 +1767,8 @@ namespace Dip.Infrastructure.Persistence.Migrations
                         .HasForeignKey("ProjectId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("Author");
 
                     b.Navigation("Parent");
 
@@ -1837,6 +1928,11 @@ namespace Dip.Infrastructure.Persistence.Migrations
                     b.Navigation("Children");
 
                     b.Navigation("Files");
+                });
+
+            modelBuilder.Entity("Dip.Domain.Entities.FolderFile", b =>
+                {
+                    b.Navigation("Blob");
                 });
 
             modelBuilder.Entity("Dip.Domain.Entities.Tidp", b =>

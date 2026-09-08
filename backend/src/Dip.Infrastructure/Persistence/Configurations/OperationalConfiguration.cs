@@ -10,20 +10,37 @@ internal sealed class DocumentSnapshotConfiguration : IEntityTypeConfiguration<D
     public void Configure(EntityTypeBuilder<DocumentSnapshot> b)
     {
         b.ToTable("DocumentSnapshots");
+        // Keyed by the source row id (Document.Id or DocumentDraft.Id). No FK:
+        // the row can live in either layer's table (decision D11).
         b.HasKey(x => x.DocumentId);
+        b.Property(x => x.Layer).HasConversion<string>().HasMaxLength(10);
+        b.Property(x => x.DocumentNumber).HasMaxLength(200).IsRequired();
+        b.Property(x => x.Title).HasMaxLength(500).IsRequired();
+        b.Property(x => x.Type).HasMaxLength(20).IsRequired();
+        b.Property(x => x.Discipline).HasMaxLength(100).IsRequired();
+        b.Property(x => x.Building).HasMaxLength(50).IsRequired();
+        b.Property(x => x.Level).HasMaxLength(10).IsRequired();
+        b.Property(x => x.Trade).HasMaxLength(20).IsRequired();
+        b.Property(x => x.Author).HasMaxLength(200);
+        b.Property(x => x.ActivityId).HasMaxLength(50);
+        b.Property(x => x.PackageName).HasMaxLength(200);
         b.Property(x => x.Revision).HasMaxLength(10);
         b.Property(x => x.AconexStatus).HasMaxLength(100);
         b.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
         b.Property(x => x.Transmittal).HasMaxLength(200);
         b.Property(x => x.ComputedAt).HasColumnType("timestamp without time zone");
+        b.Property(x => x.DeliveryMilestone).HasColumnType("timestamp without time zone");
         b.Property(x => x.PlannedStart).HasColumnType("timestamp without time zone");
         b.Property(x => x.PlannedFinish).HasColumnType("timestamp without time zone");
         b.Property(x => x.ActualStart).HasColumnType("timestamp without time zone");
         b.Property(x => x.ActualFinish).HasColumnType("timestamp without time zone");
         b.Property(x => x.SubmissionDate).HasColumnType("timestamp without time zone");
         b.Property(x => x.DateModified).HasColumnType("timestamp without time zone");
-        b.HasOne(x => x.Document).WithOne().HasForeignKey<DocumentSnapshot>(x => x.DocumentId).OnDelete(DeleteBehavior.Cascade);
-        b.HasIndex(x => x.ProjectId);
+        b.HasIndex(x => new { x.ProjectId, x.Layer });
+        b.HasIndex(x => new { x.ProjectId, x.DocumentNumber });
+        b.HasIndex(x => new { x.ProjectId, x.Discipline });
+        b.HasIndex(x => new { x.ProjectId, x.Status });
+        b.HasIndex(x => x.FolderFileId);
     }
 }
 
@@ -40,18 +57,6 @@ internal sealed class ImportBatchConfiguration : IEntityTypeConfiguration<Import
         b.Property(x => x.ImportedAt).HasColumnType("timestamp without time zone");
         b.Property(x => x.Log).HasColumnType("jsonb");
         b.HasIndex(x => new { x.ProjectId, x.ImportedAt });
-    }
-}
-
-internal sealed class ImportStagingRowConfiguration : IEntityTypeConfiguration<ImportStagingRow>
-{
-    public void Configure(EntityTypeBuilder<ImportStagingRow> b)
-    {
-        b.ToTable("ImportStagingRows");
-        b.HasKey(x => x.Id);
-        b.Property(x => x.PayloadJson).HasColumnType("jsonb");
-        b.Property(x => x.Error).HasMaxLength(1000);
-        b.HasIndex(x => new { x.ImportBatchId, x.Processed });
     }
 }
 

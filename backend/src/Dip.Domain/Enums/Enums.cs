@@ -86,6 +86,17 @@ public enum PicklistField
     ScopeArea = 11,
     SuitabilityCode = 12,
     Scale = 13,
+    Classification = 14,
+    CorporateDiscipline = 15,
+    Author = 16,
+}
+
+// What a queued unit of background work does. In-memory only (WorkQueue) —
+// never persisted, so the worker can be restarted without draining a table.
+public enum WorkItemKind
+{
+    ImportFile = 0,
+    Recalculate = 1,
 }
 
 // How far a baseline package has got, from its documents (PLAN.md § 5.4.3).

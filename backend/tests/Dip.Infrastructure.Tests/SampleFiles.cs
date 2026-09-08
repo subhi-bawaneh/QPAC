@@ -11,6 +11,12 @@ internal static class SampleFiles
     public static string Path(string relative) =>
         System.IO.Path.Combine(RepoRoot, "samples", relative);
 
+    // Importers read streams only (no disk access in the product), so the tests feed
+    // them the sample bytes the same way FileBlob does.
+    public static Stream Open(string relative) => new MemoryStream(Bytes(relative), writable: false);
+
+    public static byte[] Bytes(string relative) => File.ReadAllBytes(Path(relative));
+
     private static string Resolve()
     {
         // Walk up from the test assembly directory until we find "samples/".

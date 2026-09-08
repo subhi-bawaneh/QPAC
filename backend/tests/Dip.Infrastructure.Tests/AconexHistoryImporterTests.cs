@@ -45,7 +45,7 @@ public class AconexHistoryImporterTests : IClassFixture<ImporterFixture>
 
         var result = await importer.ImportAsync(
             _fixture.QpacProjectId,
-            SampleFiles.Path("MIDP.xlsx"),
+            SampleFiles.Open("MIDP.xlsx"),
             batch.Id,
             "test",
             CancellationToken.None);
@@ -141,7 +141,7 @@ public class AconexHistoryImporterTests : IClassFixture<ImporterFixture>
         await db.SaveChangesAsync();
 
         await importer.ImportAsync(
-            _fixture.QpacProjectId, SampleFiles.Path("MIDP.xlsx"),
+            _fixture.QpacProjectId, SampleFiles.Open("MIDP.xlsx"),
             batch.Id, "test", CancellationToken.None);
 
         // If ANY row is Terminated, it must have a same-(DocNo, Revision) row

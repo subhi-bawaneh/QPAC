@@ -11,7 +11,6 @@ namespace Dip.Infrastructure.Excel;
 public sealed class ClosedXmlReader : IExcelReader
 {
     public IExcelWorkbook Open(Stream stream) => new WorkbookWrapper(new XLWorkbook(stream));
-    public IExcelWorkbook Open(string filePath) => new WorkbookWrapper(new XLWorkbook(filePath));
 
     private sealed class WorkbookWrapper : IExcelWorkbook
     {

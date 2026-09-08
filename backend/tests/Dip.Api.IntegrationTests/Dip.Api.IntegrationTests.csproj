@@ -1,6 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
     <ProjectReference Include="..\..\src\Dip.Api\Dip.Api.csproj" />
+    <!-- TestConnectionGuard: one definition of "never run against Neon" for both suites. -->
+    <ProjectReference Include="..\Dip.Infrastructure.Tests\Dip.Infrastructure.Tests.csproj" />
   </ItemGroup>
 
   <ItemGroup>

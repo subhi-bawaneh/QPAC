@@ -1,3 +1,4 @@
+using System.Globalization;
 using Dip.Application.Documents;
 using Dip.Domain.Entities;
 using Dip.Infrastructure.Persistence;
@@ -42,7 +43,7 @@ internal static class PromoteLoader
         // "Live changed after the draft was imported" must not fire on changes THIS
         // file's own earlier promote made — those rows carry that promote's timestamp.
         var lastPromotedAt = await db.PromoteBatches
-            .Where(b => b.FolderFileId == folderFileId && !b.RolledBack)
+            .Where(b => b.FolderFileId == folderFileId)
             .OrderByDescending(b => b.At)
             .Select(b => (DateTime?)b.At)
             .FirstOrDefaultAsync(ct);
@@ -80,4 +81,37 @@ internal static class PromoteLoader
     private static PromoteLiveRow ToLiveRow(Document d) => new(
         d.Id, d.DocumentNumber, d.FolderFileId, d.UpdatedAt, DraftDiff.From(d),
         ExchangeSignature.Of(d.Exchanges));
+}
+
+// Canonical rendering of a document's data exchanges, used to detect exchange-only
+// changes (a moved exchange date is a real planning change that must promote).
+internal static class ExchangeSignature
+{
+    public static string Of(IEnumerable<DataExchange> exchanges) =>
+        Build(exchanges.Select(e => (e.Number, e.Stage, e.ProgrammeRef, e.Author, e.Geometrical,
+            e.NonGeometrical, e.DurationDays, e.Predecessor, e.ExchangeDate)));
+
+    public static string Of(IEnumerable<DataExchangeDraft> exchanges) =>
+        Build(exchanges.Select(e => (e.Number, e.Stage, e.ProgrammeRef, e.Author, e.Geometrical,
+            e.NonGeometrical, e.DurationDays, e.Predecessor, e.ExchangeDate)));
+
+    private static string Build(
+        IEnumerable<(int Number, string? Stage, string? ProgrammeRef, string? Author, string? Geometrical,
+            string? NonGeometrical, int? DurationDays, string? Predecessor, DateTime? ExchangeDate)> rows)
+    {
+        var sb = new System.Text.StringBuilder();
+        foreach (var e in rows.OrderBy(e => e.Number))
+        {
+            sb.Append(e.Number.ToString(CultureInfo.InvariantCulture)).Append('|')
+              .Append(e.Stage).Append('|')
+              .Append(e.ProgrammeRef).Append('|')
+              .Append(e.Author).Append('|')
+              .Append(e.Geometrical).Append('|')
+              .Append(e.NonGeometrical).Append('|')
+              .Append(e.DurationDays?.ToString(CultureInfo.InvariantCulture)).Append('|')
+              .Append(e.Predecessor).Append('|')
+              .Append(e.ExchangeDate?.ToString("O", CultureInfo.InvariantCulture)).Append(';');
+        }
+        return sb.ToString();
+    }
 }

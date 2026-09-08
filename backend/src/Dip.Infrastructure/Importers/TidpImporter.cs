@@ -35,14 +35,14 @@ public sealed class TidpImporter
 
     public async Task<ImportResult> ImportAsync(
         Guid projectId,
-        string filePath,
+        Stream content,
         DataTarget target,
         Guid? folderFileId,
         Guid? importBatchId,
         string importedBy,
         CancellationToken ct)
     {
-        using var wb = _reader.Open(filePath);
+        using var wb = _reader.Open(content);
         if (!wb.TryGetSheet("TIDP_Sheet", out var sheet) || sheet is null)
         {
             return new ImportResult(0, 0, 0, 0, new[] { "No 'TIDP_Sheet' sheet in workbook" });

@@ -29,6 +29,7 @@ public class DipDbContext
     public DbSet<BaselineActivity> BaselineActivities => Set<BaselineActivity>();
     public DbSet<Folder> Folders => Set<Folder>();
     public DbSet<FolderFile> FolderFiles => Set<FolderFile>();
+    public DbSet<FileBlob> FileBlobs => Set<FileBlob>();
     public DbSet<Tidp> Tidps => Set<Tidp>();
     public DbSet<Document> Documents => Set<Document>();
     public DbSet<DataExchange> DataExchanges => Set<DataExchange>();
@@ -43,7 +44,6 @@ public class DipDbContext
     // Materialized / operational
     public DbSet<DocumentSnapshot> DocumentSnapshots => Set<DocumentSnapshot>();
     public DbSet<ImportBatch> ImportBatches => Set<ImportBatch>();
-    public DbSet<ImportStagingRow> ImportStagingRows => Set<ImportStagingRow>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
     // Infrastructure-only entity — kept off IDipDbContext.

@@ -1,5 +1,6 @@
 using Dip.Application.Engine;
 using Dip.Domain.Entities;
+using Dip.Domain.Enums;
 using Dip.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -41,6 +42,7 @@ public sealed class RecalculationService
         // Ordered by id so paging is stable across steps.
         var documents = await _db.Documents
             .AsNoTracking()
+            .Include(d => d.Exchanges)
             .Where(d => d.ProjectId == projectId)
             .OrderBy(d => d.Id)
             .Skip(offset)
@@ -80,10 +82,12 @@ public sealed class RecalculationService
             .ToListAsync(ct);
         var existingByDocument = existing.ToDictionary(s => s.DocumentId);
 
+        var documentsById = documents.ToDictionary(d => d.Id);
         var computedAt = DateTime.UtcNow;
         foreach (var row in rows)
         {
             var computed = row.ToSnapshot(projectId, computedAt);
+            Describe(computed, documentsById[row.DocumentId]);
             if (existingByDocument.TryGetValue(row.DocumentId, out var snapshot))
             {
                 Apply(snapshot, computed);
@@ -100,9 +104,56 @@ public sealed class RecalculationService
         return new RecalculationStepResult(documents.Count, total, nextOffset, nextOffset >= total);
     }
 
+    // Copies the tracker's display columns off the source row so the grid can page
+    // over DocumentSnapshots alone (decision D11).
+    internal static void Describe(DocumentSnapshot snapshot, Document document)
+    {
+        snapshot.Layer = DataTarget.Live;
+        snapshot.FolderFileId = document.FolderFileId;
+        snapshot.DocumentNumber = document.DocumentNumber;
+        snapshot.Title = document.Title;
+        snapshot.Type = document.F04DocType;
+        snapshot.Discipline = document.CorporateDiscipline;
+        snapshot.Building = document.F07Building;
+        snapshot.Level = document.F08BLevel;
+        snapshot.Trade = document.F05Discipline;
+        snapshot.Author = document.Exchanges.FirstOrDefault(e => e.Number == 1)?.Author;
+        snapshot.DeliveryMilestone = document.DeliveryMilestone;
+        snapshot.ActivityId = document.ActivityId;
+        snapshot.PackageName = document.PackageName;
+    }
+
+    // Loops the chunked step until the whole project is rebuilt. Called by the
+    // import worker; the step endpoint stays as the admin fallback.
+    public async Task<int> RunAllAsync(Guid projectId, CancellationToken ct)
+    {
+        var offset = 0;
+        var processed = 0;
+        while (true)
+        {
+            var step = await RunStepAsync(projectId, offset, DefaultChunkSize, ct);
+            processed += step.Processed;
+            if (step.Done) return processed;
+            offset = step.NextOffset;
+        }
+    }
+
     private static void Apply(DocumentSnapshot target, DocumentSnapshot computed)
     {
         target.ComputedAt = computed.ComputedAt;
+        target.Layer = computed.Layer;
+        target.FolderFileId = computed.FolderFileId;
+        target.DocumentNumber = computed.DocumentNumber;
+        target.Title = computed.Title;
+        target.Type = computed.Type;
+        target.Discipline = computed.Discipline;
+        target.Building = computed.Building;
+        target.Level = computed.Level;
+        target.Trade = computed.Trade;
+        target.Author = computed.Author;
+        target.DeliveryMilestone = computed.DeliveryMilestone;
+        target.ActivityId = computed.ActivityId;
+        target.PackageName = computed.PackageName;
         target.SubmissionsCount = computed.SubmissionsCount;
         target.Revision = computed.Revision;
         target.AconexStatus = computed.AconexStatus;

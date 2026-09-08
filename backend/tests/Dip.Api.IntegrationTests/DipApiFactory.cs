@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Npgsql;
 using Xunit;
@@ -27,6 +28,7 @@ public sealed class DipApiFactory : WebApplicationFactory<Program>, IAsyncLifeti
     public DipApiFactory()
     {
         _baseConnectionString = Environment.GetEnvironmentVariable("TEST_POSTGRES_CONNECTION");
+        Dip.Infrastructure.Tests.TestConnectionGuard.Assert(_baseConnectionString);
         _schema = "dip_int_" + Guid.NewGuid().ToString("N")[..12];
     }
 
@@ -57,7 +59,17 @@ public sealed class DipApiFactory : WebApplicationFactory<Program>, IAsyncLifeti
             // window between them. AuthRateLimitTests boots its own host with a small
             // limit to prove the 429; here the limiter must never be the thing that fails.
             ["RateLimit:AuthPermitPerWindow"] = "100000",
+            // No Drive polling in tests: the sync service is exercised directly with a
+            // fake IDriveClient. The import worker stays on — the flow tests wait on it.
+            ["GoogleDrive:PollHours"] = "0",
+            ["GoogleDrive:StartupDelaySeconds"] = "0",
         }));
+
+        builder.ConfigureServices(services =>
+        {
+            services.RemoveAll<Dip.Api.Hubs.ISyncNotifier>();
+            services.AddSingleton<Dip.Api.Hubs.ISyncNotifier, Dip.Api.Hubs.NoopSyncNotifier>();
+        });
 
         return base.CreateHost(builder);
     }

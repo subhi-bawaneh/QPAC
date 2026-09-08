@@ -1,6 +1,5 @@
-using System.IO;
-using System.Net;
 using System.Net.Http.Headers;
+using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using FluentAssertions;
@@ -32,12 +31,13 @@ public class ReportsFlowTests
         var imported = await ImportTidpLiveAsync(admin, "TIDP-STL-AFCO.xlsx");
         imported.Should().BeGreaterThan(0);
 
-        // ---- before recalculation the reports still answer, and say what is missing.
-        var stale = await GetJsonAsync(admin, $"/api/projects/{QpacProjectId}/summaries/corporate");
-        stale.GetProperty("recalculationRequired").GetBoolean().Should().BeTrue();
-        stale.GetProperty("documentsWithoutSnapshot").GetInt32().Should().BeGreaterThan(0);
+        // ---- the reports always answer and report whether anything is unmaterialised.
+        var afterImport = await GetJsonAsync(admin, $"/api/projects/{QpacProjectId}/summaries/corporate");
+        afterImport.GetProperty("documentsWithoutSnapshot").ValueKind
+            .Should().Be(JsonValueKind.Number);
 
-        // ---- recalculate in chunks until done.
+        // ---- the step endpoint stays as the admin fallback and is idempotent, even
+        // though the import worker has already recalculated.
         var steps = 0;
         var offset = 0;
         var processed = 0;
@@ -149,33 +149,12 @@ public class ReportsFlowTests
         folderResp.EnsureSuccessStatusCode();
         var folderId = Guid.Parse((await folderResp.Content.ReadAsStringAsync()).Trim('"'));
 
-        var multipart = new MultipartFormDataContent();
-        var content = new ByteArrayContent(await File.ReadAllBytesAsync(ResolveSamplePath(sampleFile)));
-        content.Headers.ContentType = new MediaTypeHeaderValue(
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-        multipart.Add(content, "file", sampleFile);
-        (await admin.PostAsync($"/api/folders/{folderId}/files", multipart)).EnsureSuccessStatusCode();
-
-        var detail = await GetJsonAsync(admin, $"/api/folders/{folderId}");
-        var folderFileId = detail.GetProperty("files")[0].GetProperty("id").GetGuid();
-
-        var startResp = await admin.PostAsJsonAsync("/api/imports/start", new
-        {
-            projectId = QpacProjectId,
-            folderFileId,
-            kind = "Tidp",
-            target = "Live",
-        });
-        startResp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var batchId = (await startResp.Content.ReadFromJsonAsync<JsonElement>())
-            .GetProperty("importBatchId").GetGuid();
-
-        var stepResp = await admin.PostAsync($"/api/imports/{batchId}/step", null);
-        stepResp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var step = await stepResp.Content.ReadFromJsonAsync<JsonElement>();
-        step.GetProperty("done").GetBoolean().Should().BeTrue();
-
-        return step.GetProperty("batch").GetProperty("rowsRead").GetInt32();
+        var file = await TestHelpers.ImportedAsync(admin, folderId, sampleFile);
+        var batches = await GetJsonAsync(
+            admin, $"/api/projects/{QpacProjectId}/imports?kind=Tidp&take=20");
+        var batch = batches.EnumerateArray()
+            .First(b => b.GetProperty("folderFileId").GetGuid() == file.GetProperty("id").GetGuid());
+        return batch.GetProperty("rowsRead").GetInt32();
     }
 
     private static async Task<JsonElement> GetJsonAsync(HttpClient client, string url)
@@ -222,15 +201,4 @@ public class ReportsFlowTests
         return client;
     }
 
-    private static string ResolveSamplePath(string fileName)
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null)
-        {
-            var candidate = Path.Combine(dir.FullName, "samples", fileName);
-            if (File.Exists(candidate)) return candidate;
-            dir = dir.Parent;
-        }
-        throw new FileNotFoundException($"Cannot locate samples/{fileName}");
-    }
 }

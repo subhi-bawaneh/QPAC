@@ -94,7 +94,6 @@ internal sealed class PromoteBatchConfiguration : IEntityTypeConfiguration<Promo
         b.ToTable("PromoteBatches");
         b.HasKey(x => x.Id);
         b.Property(x => x.By).HasMaxLength(200).IsRequired();
-        b.Property(x => x.SnapshotJson).HasColumnType("jsonb");
         b.Property(x => x.At).HasColumnType("timestamp without time zone");
         b.HasIndex(x => new { x.ProjectId, x.FolderFileId, x.At });
     }

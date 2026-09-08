@@ -14,6 +14,7 @@ public interface IDipDbContext
     DbSet<BaselineActivity> BaselineActivities { get; }
     DbSet<Folder> Folders { get; }
     DbSet<FolderFile> FolderFiles { get; }
+    DbSet<FileBlob> FileBlobs { get; }
     DbSet<Tidp> Tidps { get; }
     DbSet<Document> Documents { get; }
     DbSet<DataExchange> DataExchanges { get; }
@@ -24,7 +25,6 @@ public interface IDipDbContext
     DbSet<PromoteBatch> PromoteBatches { get; }
     DbSet<DocumentSnapshot> DocumentSnapshots { get; }
     DbSet<ImportBatch> ImportBatches { get; }
-    DbSet<ImportStagingRow> ImportStagingRows { get; }
     DbSet<AuditLog> AuditLogs { get; }
 
     Task<int> SaveChangesAsync(CancellationToken ct = default);

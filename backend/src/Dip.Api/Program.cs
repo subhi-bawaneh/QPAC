@@ -4,6 +4,7 @@ using Dip.Infrastructure.Persistence;
 using Dip.Infrastructure.Seeding;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.SignalR;
 using Serilog;
 
 // Bootstrap logger — set once per process. WebApplicationFactory reboots the
@@ -73,6 +74,7 @@ try
         ResponseWriter = WriteHealthReportAsync,
     });
     app.MapControllers();
+    app.MapHub<Dip.Api.Hubs.SyncHub>("/hubs/sync");
 
     Log.Information("DIP API starting");
     app.Run();

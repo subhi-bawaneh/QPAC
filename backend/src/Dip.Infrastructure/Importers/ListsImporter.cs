@@ -24,9 +24,9 @@ public sealed class ListsImporter
         _reader = reader;
     }
 
-    public async Task<ImportResult> ImportAsync(Guid projectId, string filePath, CancellationToken ct)
+    public async Task<ImportResult> ImportAsync(Guid projectId, Stream content, CancellationToken ct)
     {
-        using var wb = _reader.Open(filePath);
+        using var wb = _reader.Open(content);
         if (!wb.TryGetSheet("Lists", out var sheet) || sheet is null)
         {
             return new ImportResult(0, 0, 0, 0, new[] { "No 'Lists' sheet in workbook" });

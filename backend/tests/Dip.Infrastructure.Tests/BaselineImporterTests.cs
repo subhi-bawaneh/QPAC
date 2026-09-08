@@ -26,7 +26,7 @@ public class BaselineImporterTests : IClassFixture<ImporterFixture>
 
         var result = await importer.ImportAsync(
             _fixture.QpacProjectId,
-            SampleFiles.Path("Baseline.xlsx"),
+            SampleFiles.Open("Baseline.xlsx"),
             replace: true,
             CancellationToken.None);
 
@@ -51,11 +51,11 @@ public class BaselineImporterTests : IClassFixture<ImporterFixture>
         var importer = scope.ServiceProvider.GetRequiredService<BaselineImporter>();
 
         await importer.ImportAsync(
-            _fixture.QpacProjectId, SampleFiles.Path("Baseline.xlsx"),
+            _fixture.QpacProjectId, SampleFiles.Open("Baseline.xlsx"),
             replace: false, CancellationToken.None);
 
         var second = await importer.ImportAsync(
-            _fixture.QpacProjectId, SampleFiles.Path("Baseline.xlsx"),
+            _fixture.QpacProjectId, SampleFiles.Open("Baseline.xlsx"),
             replace: false, CancellationToken.None);
 
         second.RowsInserted.Should().Be(0);

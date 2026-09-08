@@ -40,9 +40,9 @@ public sealed class PicklistImporter
         ("FIELD 08B", PicklistField.Level),
     ];
 
-    public async Task<ImportResult> ImportAsync(Guid projectId, string filePath, CancellationToken ct)
+    public async Task<ImportResult> ImportAsync(Guid projectId, Stream content, CancellationToken ct)
     {
-        using var wb = _reader.Open(filePath);
+        using var wb = _reader.Open(content);
         // Different files use different casings for the same sheet:
         //   TIDP-STL / MIDP -> "Picklists"
         //   Standalone      -> "Pick_Lists"

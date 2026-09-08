@@ -1,3 +1,4 @@
+using Dip.Api.Workers;
 using Dip.Application.Abstractions;
 using Dip.Infrastructure.Drive;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -19,12 +20,17 @@ public sealed class DriveHealthCheck : IHealthCheck
 
     private readonly IDriveClient _drive;
     private readonly GoogleDriveOptions _options;
+    private readonly WorkerState _workers;
 
-    public DriveHealthCheck(IDriveClient drive, IOptions<GoogleDriveOptions> options)
+    public DriveHealthCheck(IDriveClient drive, IOptions<GoogleDriveOptions> options, WorkerState workers)
     {
         _drive = drive;
         _options = options.Value;
+        _workers = workers;
     }
+
+    private static string Describe(DateTime? at) =>
+        at?.ToString("O", System.Globalization.CultureInfo.InvariantCulture) ?? "never";
 
     public async Task<HealthCheckResult> CheckHealthAsync(
         HealthCheckContext context, CancellationToken cancellationToken = default)
@@ -38,7 +44,10 @@ public sealed class DriveHealthCheck : IHealthCheck
         try
         {
             var children = await _drive.ListChildrenAsync(_options.RootFolderId, cancellationToken);
-            return HealthCheckResult.Healthy($"Drive root readable ({children.Count} entries)");
+            return HealthCheckResult.Healthy(
+                $"Drive root readable ({children.Count} entries); "
+                + $"lastRunFinishedAt={Describe(_workers.LastRunFinishedAt)}; "
+                + $"queuedImports={_workers.QueuedImports}");
         }
         catch (Exception ex)
         {

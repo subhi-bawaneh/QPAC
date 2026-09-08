@@ -1,98 +1,104 @@
 using System.Net;
-using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace Dip.Api.IntegrationTests;
 
-// End-to-end folder CRUD + upload + permission gating against real Postgres.
-// Reads the seeded QPAC project id via /api/me + a lightweight lookup query.
+// Folder creation, upload and the automatic import that follows it, against real
+// Postgres. Rename and delete are gone (decision D6/D7), so what is left to prove
+// is the upsert rule of refactor-plan § 3 R1/R2 and the permission gates.
 [Collection(IntegrationTestCollection.Name)]
 public class FoldersFlowTests
 {
-    private static readonly Guid QpacProjectId = Guid.Parse("11111111-1111-1111-1111-111111111111");
     private readonly DipApiFactory _factory;
 
     public FoldersFlowTests(DipApiFactory factory) => _factory = factory;
 
     [Fact]
-    public async Task Admin_CanCreateFolderThenRenameThenSetTargetThenSeeInTree()
+    public async Task Admin_CreatesFolder_SetsTarget_AndSeesItInTheTree()
     {
         if (!_factory.IsPostgresAvailable) return;
 
-        var client = await AuthedClientAsAdminAsync();
+        var admin = await TestHelpers.AuthedAdminAsync(_factory);
+        var name = $"IntegrationRoot-{Guid.NewGuid():N}";
+        var folderId = await TestHelpers.CreateFolderAsync(admin, name);
 
-        var uniqueName = $"IntegrationRoot-{Guid.NewGuid():N}";
-        var create = await client.PostAsJsonAsync("/api/folders", new
-        {
-            projectId = QpacProjectId,
-            parentId = (Guid?)null,
-            name = uniqueName,
-        });
-        create.StatusCode.Should().Be(HttpStatusCode.Created);
-        var folderId = Guid.Parse((await create.Content.ReadAsStringAsync()).Trim('"'));
+        await TestHelpers.SetTargetAsync(admin, folderId, "Draft");
 
-        // Set Draft target — requires folders.assignTarget which SuperAdmin has.
-        var setTarget = await client.PutAsJsonAsync($"/api/folders/{folderId}/target", new { target = "Draft" });
-        setTarget.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        var detail = await TestHelpers.GetJsonAsync(admin, $"/api/folders/{folderId}");
+        var folder = detail.GetProperty("folder");
+        folder.GetProperty("name").GetString().Should().Be(name);
+        folder.GetProperty("target").GetString().Should().Be("Draft");
 
-        // Rename it.
-        var newName = uniqueName + "-Renamed";
-        var rename = await client.PutAsJsonAsync($"/api/folders/{folderId}/name", new { newName });
-        rename.StatusCode.Should().Be(HttpStatusCode.NoContent);
-
-        // Fetch details and verify.
-        var detail = await client.GetAsync($"/api/folders/{folderId}");
-        detail.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await detail.Content.ReadFromJsonAsync<JsonElement>();
-        var folderNode = body.GetProperty("folder");
-        folderNode.GetProperty("name").GetString().Should().Be(newName);
-        folderNode.GetProperty("target").GetString().Should().Be("Draft");
-
-        // Tree contains the folder.
-        var tree = await client.GetAsync($"/api/projects/{QpacProjectId}/folders/tree");
+        var tree = await admin.GetAsync($"/api/projects/{TestHelpers.QpacProjectId}/folders/tree");
         tree.StatusCode.Should().Be(HttpStatusCode.OK);
-        var treeText = await tree.Content.ReadAsStringAsync();
-        treeText.Should().Contain(newName);
+        (await tree.Content.ReadAsStringAsync()).Should().Contain(name);
     }
 
     [Fact]
-    public async Task Admin_CanUploadFileAndDetectKind()
+    public async Task Upload_ImportsAutomatically_AndTheSameNameReplacesTheRow()
     {
         if (!_factory.IsPostgresAvailable) return;
 
-        var client = await AuthedClientAsAdminAsync();
+        var admin = await TestHelpers.AuthedAdminAsync(_factory);
+        var folderId = await TestHelpers.CreateFolderAsync(admin, $"UploadTest-{Guid.NewGuid():N}");
 
-        // Create parent folder.
-        var folderResp = await client.PostAsJsonAsync("/api/folders", new
+        var fileId = await TestHelpers.UploadSampleAsync(admin, folderId, "PickLists.xlsx");
+        var file = await TestHelpers.WaitForImportAsync(admin, folderId, fileId);
+
+        file.GetProperty("kind").GetString().Should().Be("Picklists");
+        file.GetProperty("contentSource").GetString().Should().Be("Upload");
+        file.GetProperty("state").GetString().Should().Be("Imported",
+            "import error: {0}", file.GetProperty("importError").GetString());
+        file.GetProperty("lastImportedAt").ValueKind.Should().NotBe(JsonValueKind.Null);
+
+        // Same name again: one row, replaced, and re-imported.
+        var second = await TestHelpers.UploadAsync(admin, folderId, "PickLists.xlsx");
+        second.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        var body = await second.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("replaced").GetBoolean().Should().BeTrue();
+        body.GetProperty("fileId").GetGuid().Should().Be(fileId, "the (folder, name) pair identifies the file");
+
+        await TestHelpers.WaitForImportAsync(admin, folderId, fileId);
+        var detail = await TestHelpers.GetJsonAsync(admin, $"/api/folders/{folderId}");
+        detail.GetProperty("files").GetArrayLength().Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Upload_OfAnUnrecognisedWorkbook_Is400()
+    {
+        if (!_factory.IsPostgresAvailable) return;
+
+        var admin = await TestHelpers.AuthedAdminAsync(_factory);
+        var folderId = await TestHelpers.CreateFolderAsync(admin, $"BadUpload-{Guid.NewGuid():N}");
+
+        var response = await TestHelpers.UploadAsync(
+            admin, folderId, "something-else.xlsx", Encoding.UTF8.GetBytes("PKfake"));
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task CreateFolder_UnderADriveFolder_IsRejected()
+    {
+        if (!_factory.IsPostgresAvailable) return;
+
+        var admin = await TestHelpers.AuthedAdminAsync(_factory);
+        var driveFolderId = await SeedDriveFolderAsync();
+
+        var response = await admin.PostAsJsonAsync("/api/folders", new
         {
-            projectId = QpacProjectId,
-            parentId = (Guid?)null,
-            name = $"UploadTest-{Guid.NewGuid():N}",
+            projectId = TestHelpers.QpacProjectId,
+            parentId = driveFolderId,
+            name = $"Manual-{Guid.NewGuid():N}",
         });
-        var folderId = Guid.Parse((await folderResp.Content.ReadAsStringAsync()).Trim('"'));
 
-        // Multipart upload of a small "TDP" file so the auto-detect classifies it as Tidp.
-        var content = new MultipartFormDataContent();
-        var bytes = Encoding.UTF8.GetBytes("PKfake-xlsx-bytes");
-        var fileContent = new ByteArrayContent(bytes);
-        fileContent.Headers.ContentType = new MediaTypeHeaderValue("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-        content.Add(fileContent, "file", "QF01012-NES-C04518-TDP-STL-00-000000-000001.xlsx");
-
-        var upload = await client.PostAsync($"/api/folders/{folderId}/files", content);
-        upload.StatusCode.Should().Be(HttpStatusCode.Created);
-
-        // GET the folder — file should show up with Kind=Tidp.
-        var detail = await client.GetAsync($"/api/folders/{folderId}");
-        detail.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await detail.Content.ReadFromJsonAsync<JsonElement>();
-        var files = body.GetProperty("files");
-        files.GetArrayLength().Should().Be(1);
-        files[0].GetProperty("kind").GetString().Should().Be("Tidp");
-        files[0].GetProperty("source").GetString().Should().Be("Upload");
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await response.Content.ReadAsStringAsync()).Should().Contain("Google Drive");
     }
 
     [Fact]
@@ -100,52 +106,29 @@ public class FoldersFlowTests
     {
         if (!_factory.IsPostgresAvailable) return;
 
-        // Provision an Editor user for this test.
-        var admin = await AuthedClientAsAdminAsync();
-        var editorEmail = $"editor-folder-{Guid.NewGuid():N}@dip.test";
-        var editorPassword = "EditorPassw0rd!";
-        var createUser = await admin.PostAsJsonAsync("/api/users", new
-        {
-            email = editorEmail,
-            password = editorPassword,
-            fullName = "Folder Editor",
-            roles = new[] { "Editor" },
-        });
-        createUser.EnsureSuccessStatusCode();
+        var admin = await TestHelpers.AuthedAdminAsync(_factory);
+        var folderId = await TestHelpers.CreateFolderAsync(admin, $"ForbiddenTest-{Guid.NewGuid():N}");
+        var editor = await TestHelpers.AuthedAsync(_factory, admin, "Editor", "folder-editor");
 
-        // Admin creates a folder to target.
-        var folderResp = await admin.PostAsJsonAsync("/api/folders", new
-        {
-            projectId = QpacProjectId,
-            parentId = (Guid?)null,
-            name = $"ForbiddenTest-{Guid.NewGuid():N}",
-        });
-        var folderId = Guid.Parse((await folderResp.Content.ReadAsStringAsync()).Trim('"'));
-
-        // Editor logs in and attempts SetFolderTarget — expect 403.
-        var editor = _factory.CreateClient();
-        var loginResp = await editor.PostAsJsonAsync("/api/auth/login", new { email = editorEmail, password = editorPassword });
-        loginResp.EnsureSuccessStatusCode();
-        var loginBody = await loginResp.Content.ReadFromJsonAsync<JsonElement>();
-        editor.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
-            "Bearer", loginBody.GetProperty("accessToken").GetString());
-
-        var setTarget = await editor.PutAsJsonAsync($"/api/folders/{folderId}/target", new { target = "Draft" });
-        setTarget.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        var response = await editor.PutAsJsonAsync($"/api/folders/{folderId}/target", new { target = "Draft" });
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
-    private async Task<HttpClient> AuthedClientAsAdminAsync()
+    // A Drive-linked folder cannot be produced through the API by design, so it is
+    // written straight to the database.
+    private async Task<Guid> SeedDriveFolderAsync()
     {
-        var client = _factory.CreateClient();
-        var response = await client.PostAsJsonAsync("/api/auth/login", new
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<Infrastructure.Persistence.DipDbContext>();
+        var folder = new Domain.Entities.Folder
         {
-            email = DipApiFactory.SuperAdminEmail,
-            password = DipApiFactory.SuperAdminPassword,
-        });
-        response.EnsureSuccessStatusCode();
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
-            "Bearer", body.GetProperty("accessToken").GetString());
-        return client;
+            ProjectId = TestHelpers.QpacProjectId,
+            Name = $"DriveMirror-{Guid.NewGuid():N}",
+            DriveFolderId = Guid.NewGuid().ToString("N"),
+        };
+        folder.Path = folder.Name;
+        db.Folders.Add(folder);
+        await db.SaveChangesAsync();
+        return folder.Id;
     }
 }

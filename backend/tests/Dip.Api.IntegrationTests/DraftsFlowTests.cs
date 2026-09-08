@@ -1,6 +1,5 @@
-using System.IO;
-using System.Net;
 using System.Net.Http.Headers;
+using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using FluentAssertions;
@@ -162,46 +161,10 @@ public class DraftsFlowTests
 
     private async Task<Guid> ImportTidpAsDraftAsync(HttpClient admin)
     {
-        var folderResp = await admin.PostAsJsonAsync("/api/folders", new
-        {
-            projectId = QpacProjectId,
-            parentId = (Guid?)null,
-            name = $"DraftsE2E-{Guid.NewGuid():N}",
-        });
-        folderResp.EnsureSuccessStatusCode();
-        var folderId = Guid.Parse((await folderResp.Content.ReadAsStringAsync()).Trim('"'));
-
-        var targetResp = await admin.PutAsJsonAsync($"/api/folders/{folderId}/target", new { target = "Draft" });
-        targetResp.StatusCode.Should().Be(HttpStatusCode.NoContent);
-
-        var samplePath = ResolveSamplePath("TIDP-STL.xlsx");
-        var multipart = new MultipartFormDataContent();
-        var fileContent = new ByteArrayContent(await File.ReadAllBytesAsync(samplePath));
-        fileContent.Headers.ContentType = new MediaTypeHeaderValue(
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-        multipart.Add(fileContent, "file", "TIDP-STL.xlsx");
-        (await admin.PostAsync($"/api/folders/{folderId}/files", multipart)).EnsureSuccessStatusCode();
-
-        var detail = await GetJsonAsync(admin, $"/api/folders/{folderId}");
-        var folderFileId = detail.GetProperty("files")[0].GetProperty("id").GetGuid();
-
-        var startResp = await admin.PostAsJsonAsync("/api/imports/start", new
-        {
-            projectId = QpacProjectId,
-            folderFileId,
-            kind = "Tidp",
-            target = "Draft",
-        });
-        startResp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var batchId = (await startResp.Content.ReadFromJsonAsync<JsonElement>())
-            .GetProperty("importBatchId").GetGuid();
-
-        var stepResp = await admin.PostAsync($"/api/imports/{batchId}/step", content: null);
-        stepResp.StatusCode.Should().Be(HttpStatusCode.OK);
-        (await stepResp.Content.ReadFromJsonAsync<JsonElement>())
-            .GetProperty("done").GetBoolean().Should().BeTrue();
-
-        return folderFileId;
+        var folderId = await TestHelpers.CreateFolderAsync(admin, $"DraftsE2E-{Guid.NewGuid():N}");
+        await TestHelpers.SetTargetAsync(admin, folderId, "Draft");
+        var file = await TestHelpers.ImportedAsync(admin, folderId, "TIDP-STL.xlsx");
+        return file.GetProperty("id").GetGuid();
     }
 
     // Pages through every draft row of the file — the sample runs to several
@@ -303,15 +266,4 @@ public class DraftsFlowTests
         return client;
     }
 
-    private static string ResolveSamplePath(string fileName)
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null)
-        {
-            var candidate = Path.Combine(dir.FullName, "samples", fileName);
-            if (File.Exists(candidate)) return candidate;
-            dir = dir.Parent;
-        }
-        throw new FileNotFoundException($"Cannot locate samples/{fileName}");
-    }
 }

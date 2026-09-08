@@ -24,6 +24,14 @@ public sealed class CreateFolderHandler : ICommandHandler<CreateFolderCommand, G
             {
                 throw new FluentValidation.ValidationException("Parent folder belongs to a different project");
             }
+
+            // The Drive half of the tree is a mirror; creating a folder there would
+            // vanish on the next poll (decision D6).
+            if (parent.DriveFolderId is not null)
+            {
+                throw new FluentValidation.ValidationException(
+                    "Drive folders are managed in Google Drive");
+            }
         }
 
         var path = parent is null ? command.Name : $"{parent.Path}/{command.Name}";
@@ -41,6 +49,7 @@ public sealed class CreateFolderHandler : ICommandHandler<CreateFolderCommand, G
             ParentId = command.ParentId,
             Name = command.Name,
             Path = path,
+            // Inherits the parent's target (refactor-plan § 3 R6).
             Target = parent?.Target ?? Domain.Enums.DataTarget.Live,
             SortOrder = 0,
         };

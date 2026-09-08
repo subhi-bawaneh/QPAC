@@ -1,161 +1,101 @@
-using System.IO;
 using System.Net;
-using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace Dip.Api.IntegrationTests;
 
-// End-to-end import orchestration against real Neon:
-//   1. Admin logs in.
-//   2. Creates a folder + uploads the real samples/PickLists.xlsx.
-//   3. Calls POST /api/imports/start -> gets batchId.
-//   4. Calls POST /api/imports/{batchId}/step -> Done=true.
-//   5. Calls GET /api/imports/{batchId}/status -> Completed=true, RowsInserted>0.
-//   6. Calls GET /api/projects/{projectId}/imports -> includes the batch.
-//
-// PickLists.xlsx is used because it's small (~50 KB) and its importer runs in
-// <2s, keeping the whole test under 20s. TIDP/MIDP/Aconex importers are
-// covered directly in Dip.Infrastructure.Tests where they don't add API
-// integration overhead.
+// Uploading a workbook is the whole import protocol now (decision D5): the worker
+// picks it up, routes its sheets (refactor-plan § 3 R5) and writes to the layer the
+// folder's target selects (R4).
 [Collection(IntegrationTestCollection.Name)]
 public class ImportsFlowTests
 {
-    private static readonly Guid QpacProjectId = Guid.Parse("11111111-1111-1111-1111-111111111111");
     private readonly DipApiFactory _factory;
 
     public ImportsFlowTests(DipApiFactory factory) => _factory = factory;
 
     [Fact]
-    public async Task Start_Step_Status_List_EndToEnd()
+    public async Task Upload_ToADraftFolder_WritesDraftRows_AndRecordsTheBatch()
     {
         if (!_factory.IsPostgresAvailable) return;
 
-        var admin = await AuthedAdminAsync();
+        var admin = await TestHelpers.AuthedAdminAsync(_factory);
+        var projectId = await TestHelpers.NewProjectAsync(_factory, "Import draft test");
+        var folderId = await TestHelpers.CreateFolderAsync(
+            admin, $"ImportDraft-{Guid.NewGuid():N}", projectId: projectId);
+        await TestHelpers.SetTargetAsync(admin, folderId, "Draft");
 
-        // 1. Create folder.
-        var folderResp = await admin.PostAsJsonAsync("/api/folders", new
-        {
-            projectId = QpacProjectId,
-            parentId = (Guid?)null,
-            name = $"ImportsE2E-{Guid.NewGuid():N}",
-        });
-        folderResp.EnsureSuccessStatusCode();
-        var folderId = Guid.Parse((await folderResp.Content.ReadAsStringAsync()).Trim('"'));
+        var file = await TestHelpers.ImportedAsync(admin, folderId, "TIDP-STL.xlsx");
+        var fileId = file.GetProperty("id").GetGuid();
 
-        // 2. Upload PickLists.xlsx from the real samples folder.
-        var samplePath = ResolveSamplePath("PickLists.xlsx");
-        var multipart = new MultipartFormDataContent();
-        var fileBytes = await File.ReadAllBytesAsync(samplePath);
-        var fileContent = new ByteArrayContent(fileBytes);
-        fileContent.Headers.ContentType = new MediaTypeHeaderValue(
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-        multipart.Add(fileContent, "file", "PickLists.xlsx");
+        var expected = await SheetRowCountAsync();
+        (await DraftCountAsync(fileId)).Should().Be(expected);
+        (await LiveCountAsync(fileId)).Should().Be(0, "a Draft-target folder must not touch Live");
 
-        var uploadResp = await admin.PostAsync($"/api/folders/{folderId}/files", multipart);
-        uploadResp.EnsureSuccessStatusCode();
+        // The batch is visible through the endpoints that survived the refactor.
+        var batches = await TestHelpers.GetJsonAsync(
+            admin, $"/api/projects/{projectId}/imports?kind=Tidp&take=20");
+        var batch = batches.EnumerateArray()
+            .First(b => b.GetProperty("folderFileId").GetGuid() == fileId);
+        batch.GetProperty("target").GetString().Should().Be("Draft");
+        batch.GetProperty("completed").GetBoolean().Should().BeTrue();
 
-        // Read the folder to grab the uploaded file id.
-        var detailResp = await admin.GetAsync($"/api/folders/{folderId}");
-        detailResp.EnsureSuccessStatusCode();
-        var detail = await detailResp.Content.ReadFromJsonAsync<JsonElement>();
-        var folderFileId = detail.GetProperty("files")[0].GetProperty("id").GetGuid();
-
-        // 3. Start.
-        var startResp = await admin.PostAsJsonAsync("/api/imports/start", new
-        {
-            projectId = QpacProjectId,
-            folderFileId,
-            kind = "Picklists",
-            target = "Live",
-        });
-        startResp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var startBody = await startResp.Content.ReadFromJsonAsync<JsonElement>();
-        var batchId = startBody.GetProperty("importBatchId").GetGuid();
-
-        // 4. Step.
-        var stepResp = await admin.PostAsync($"/api/imports/{batchId}/step", content: null);
-        stepResp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var stepBody = await stepResp.Content.ReadFromJsonAsync<JsonElement>();
-        stepBody.GetProperty("done").GetBoolean().Should().BeTrue();
-        stepBody.GetProperty("batch").GetProperty("completed").GetBoolean().Should().BeTrue();
-        stepBody.GetProperty("batch").GetProperty("rowsRead").GetInt32().Should().BeGreaterThan(0);
-
-        // 5. Status.
-        var statusResp = await admin.GetAsync($"/api/imports/{batchId}/status");
-        statusResp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var statusBody = await statusResp.Content.ReadFromJsonAsync<JsonElement>();
-        statusBody.GetProperty("completed").GetBoolean().Should().BeTrue();
-        statusBody.GetProperty("kind").GetString().Should().Be("Picklists");
-
-        // 6. List includes this batch.
-        var listResp = await admin.GetAsync($"/api/projects/{QpacProjectId}/imports?kind=Picklists&take=10");
-        listResp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var listBody = await listResp.Content.ReadFromJsonAsync<JsonElement>();
-        var ids = listBody.EnumerateArray().Select(e => e.GetProperty("id").GetGuid()).ToArray();
-        ids.Should().Contain(batchId);
+        var status = await TestHelpers.GetJsonAsync(
+            admin, $"/api/imports/{batch.GetProperty("id").GetGuid()}/status");
+        status.GetProperty("rowsRead").GetInt32().Should().Be(expected);
     }
 
     [Fact]
-    public async Task Editor_Forbidden_FromStartingImport()
+    public async Task Upload_ToALiveFolder_WritesLiveRows()
     {
         if (!_factory.IsPostgresAvailable) return;
 
-        var admin = await AuthedAdminAsync();
-        var editorEmail = $"editor-import-{Guid.NewGuid():N}@dip.test";
-        var editorPassword = "EditorPassw0rd!";
-        var createUser = await admin.PostAsJsonAsync("/api/users", new
-        {
-            email = editorEmail,
-            password = editorPassword,
-            fullName = "Import Editor",
-            roles = new[] { "Editor" },
-        });
-        createUser.EnsureSuccessStatusCode();
+        var admin = await TestHelpers.AuthedAdminAsync(_factory);
+        var projectId = await TestHelpers.NewProjectAsync(_factory, "Import live test");
+        var folderId = await TestHelpers.CreateFolderAsync(
+            admin, $"ImportLive-{Guid.NewGuid():N}", projectId: projectId);
 
-        var editor = _factory.CreateClient();
-        var login = await editor.PostAsJsonAsync("/api/auth/login", new { email = editorEmail, password = editorPassword });
-        login.EnsureSuccessStatusCode();
-        var loginBody = await login.Content.ReadFromJsonAsync<JsonElement>();
-        editor.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
-            "Bearer", loginBody.GetProperty("accessToken").GetString());
+        var file = await TestHelpers.ImportedAsync(admin, folderId, "TIDP-STL.xlsx");
+        var fileId = file.GetProperty("id").GetGuid();
 
-        var response = await editor.PostAsJsonAsync("/api/imports/start", new
-        {
-            projectId = QpacProjectId,
-            folderFileId = Guid.NewGuid(),
-            kind = "Picklists",
-            target = "Live",
-        });
+        var expected = await SheetRowCountAsync();
+        (await LiveCountAsync(fileId)).Should().Be(expected);
+        (await DraftCountAsync(fileId)).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Viewer_Forbidden_FromUploading()
+    {
+        if (!_factory.IsPostgresAvailable) return;
+
+        var admin = await TestHelpers.AuthedAdminAsync(_factory);
+        var folderId = await TestHelpers.CreateFolderAsync(admin, $"ImportForbidden-{Guid.NewGuid():N}");
+        var viewer = await TestHelpers.AuthedAsync(_factory, admin, "Viewer", "import-viewer");
+
+        var response = await TestHelpers.UploadAsync(viewer, folderId, "PickLists.xlsx");
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
-    private async Task<HttpClient> AuthedAdminAsync()
+    // The expected row count is derived from the workbook itself, never hard-coded
+    // (CLAUDE.md rule 8).
+    private static Task<int> SheetRowCountAsync() =>
+        Task.FromResult(TidpSampleRowCount.Value);
+
+    private async Task<int> DraftCountAsync(Guid fileId)
     {
-        var client = _factory.CreateClient();
-        var response = await client.PostAsJsonAsync("/api/auth/login", new
-        {
-            email = DipApiFactory.SuperAdminEmail,
-            password = DipApiFactory.SuperAdminPassword,
-        });
-        response.EnsureSuccessStatusCode();
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
-            "Bearer", body.GetProperty("accessToken").GetString());
-        return client;
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<Infrastructure.Persistence.DipDbContext>();
+        return await db.DocumentDrafts.CountAsync(d => d.FolderFileId == fileId);
     }
 
-    private static string ResolveSamplePath(string fileName)
+    private async Task<int> LiveCountAsync(Guid fileId)
     {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null)
-        {
-            var candidate = Path.Combine(dir.FullName, "samples", fileName);
-            if (File.Exists(candidate)) return candidate;
-            dir = dir.Parent;
-        }
-        throw new FileNotFoundException($"Cannot locate samples/{fileName}");
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<Infrastructure.Persistence.DipDbContext>();
+        return await db.Documents.CountAsync(d => d.FolderFileId == fileId);
     }
 }

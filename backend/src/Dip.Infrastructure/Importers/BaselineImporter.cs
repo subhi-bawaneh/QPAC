@@ -24,9 +24,9 @@ public sealed class BaselineImporter
         _reader = reader;
     }
 
-    public async Task<ImportResult> ImportAsync(Guid projectId, string filePath, bool replace, CancellationToken ct)
+    public async Task<ImportResult> ImportAsync(Guid projectId, Stream content, bool replace, CancellationToken ct)
     {
-        using var wb = _reader.Open(filePath);
+        using var wb = _reader.Open(content);
         // Different workbooks use different names for the same sheet:
         //   Baseline.xlsx   -> "ENG_BL"  (P6 export)
         //   TIDP-STL.xlsx   -> "Baseline"

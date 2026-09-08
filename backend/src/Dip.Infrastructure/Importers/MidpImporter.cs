@@ -32,14 +32,14 @@ public sealed class MidpImporter
 
     public async Task<ImportResult> ImportAsync(
         Guid projectId,
-        string filePath,
+        Stream content,
         DataTarget target,
         Guid? folderFileId,
         Guid? importBatchId,
         string importedBy,
         CancellationToken ct)
     {
-        using var wb = _reader.Open(filePath);
+        using var wb = _reader.Open(content);
         if (!wb.TryGetSheet("MIDP", out var sheet) || sheet is null)
         {
             return new ImportResult(0, 0, 0, 0, new[] { "No 'MIDP' sheet in workbook" });

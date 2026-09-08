@@ -1,6 +1,5 @@
-using System.IO;
-using System.Net;
 using System.Net.Http.Headers;
+using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using FluentAssertions;
@@ -12,7 +11,7 @@ namespace Dip.Api.IntegrationTests;
 //   (a) Draft import then Promote on an empty Live layer -> every row Added.
 //   (b) Edit one draft row, promote again -> exactly one Modified, with AuditLog rows.
 //   (c) A number already owned by another file -> Conflict, and Live is left untouched.
-//   (d) Rollback restores the pre-promote state.
+// Rollback is gone (decision D7); AuditLog is the undo trail.
 [Collection(IntegrationTestCollection.Name)]
 public class PromoteFlowTests
 {
@@ -69,50 +68,6 @@ public class PromoteFlowTests
         secondPromote.GetProperty("updated").GetInt32().Should().Be(1);
         secondPromote.GetProperty("added").GetInt32().Should().Be(0);
 
-        // ---- (d) rollback puts the old title back.
-        var rollback = await admin.PostAsync(
-            $"/api/drafts/promote/{secondPromote.GetProperty("promoteBatchId").GetGuid()}/rollback", null);
-        rollback.StatusCode.Should().Be(HttpStatusCode.OK,
-            "rollback failed: {0}", await rollback.Content.ReadAsStringAsync());
-        var rollbackBody = await rollback.Content.ReadFromJsonAsync<JsonElement>();
-        rollbackBody.GetProperty("restored").GetInt32().Should().Be(1);
-        rollbackBody.GetProperty("removed").GetInt32().Should().Be(0);
-
-        // The edit is pending again: the draft still says "PROMOTE TEST TITLE",
-        // Live is back to the original, so the diff shows one Modified row once more.
-        var afterRollback = await GetJsonAsync(admin, $"/api/drafts/promote-diff?folderFileId={file.FolderFileId}");
-        afterRollback.GetProperty("modified").GetInt32().Should().Be(1);
-        afterRollback.GetProperty("modifiedRows")[0].GetProperty("changes")[0]
-            .GetProperty("oldValue").GetString().Should().Be(row.GetProperty("title").GetString());
-
-        // A batch cannot be rolled back twice.
-        var again = await admin.PostAsync(
-            $"/api/drafts/promote/{secondPromote.GetProperty("promoteBatchId").GetGuid()}/rollback", null);
-        again.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-    }
-
-    [Fact]
-    public async Task Rollback_OfTheFirstPromote_RemovesEveryRowItAdded()
-    {
-        if (!_factory.IsPostgresAvailable) return;
-
-        var admin = await AuthedAdminAsync();
-        var file = await ImportTidpAsDraftAsync(admin, "TIDP-STL-AFCO.xlsx");
-        var draftCount = await DraftCountAsync(admin, file.FolderFileId);
-
-        var promote = await PromoteAsync(admin, file.FolderFileId);
-        promote.GetProperty("added").GetInt32().Should().Be(draftCount);
-
-        var rollback = await admin.PostAsync(
-            $"/api/drafts/promote/{promote.GetProperty("promoteBatchId").GetGuid()}/rollback", null);
-        rollback.StatusCode.Should().Be(HttpStatusCode.OK);
-        (await rollback.Content.ReadFromJsonAsync<JsonElement>())
-            .GetProperty("removed").GetInt32().Should().Be(draftCount);
-
-        // Live is empty again, so every draft row is New (and Added) once more.
-        var diff = await GetJsonAsync(admin, $"/api/drafts/promote-diff?folderFileId={file.FolderFileId}");
-        diff.GetProperty("added").GetInt32().Should().Be(draftCount);
-        diff.GetProperty("unchanged").GetInt32().Should().Be(0);
     }
 
     // ---- (c) the same numbers arriving from a second file are conflicts, and the
@@ -208,45 +163,10 @@ public class PromoteFlowTests
 
     private async Task<ImportedFile> ImportTidpAsDraftAsync(HttpClient admin, string sampleFile)
     {
-        var folderResp = await admin.PostAsJsonAsync("/api/folders", new
-        {
-            projectId = QpacProjectId,
-            parentId = (Guid?)null,
-            name = $"PromoteE2E-{Guid.NewGuid():N}",
-        });
-        folderResp.EnsureSuccessStatusCode();
-        var folderId = Guid.Parse((await folderResp.Content.ReadAsStringAsync()).Trim('"'));
-
-        (await admin.PutAsJsonAsync($"/api/folders/{folderId}/target", new { target = "Draft" }))
-            .StatusCode.Should().Be(HttpStatusCode.NoContent);
-
-        var multipart = new MultipartFormDataContent();
-        var content = new ByteArrayContent(await File.ReadAllBytesAsync(ResolveSamplePath(sampleFile)));
-        content.Headers.ContentType = new MediaTypeHeaderValue(
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-        multipart.Add(content, "file", sampleFile);
-        (await admin.PostAsync($"/api/folders/{folderId}/files", multipart)).EnsureSuccessStatusCode();
-
-        var detail = await GetJsonAsync(admin, $"/api/folders/{folderId}");
-        var folderFileId = detail.GetProperty("files")[0].GetProperty("id").GetGuid();
-
-        var startResp = await admin.PostAsJsonAsync("/api/imports/start", new
-        {
-            projectId = QpacProjectId,
-            folderFileId,
-            kind = "Tidp",
-            target = "Draft",
-        });
-        startResp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var batchId = (await startResp.Content.ReadFromJsonAsync<JsonElement>())
-            .GetProperty("importBatchId").GetGuid();
-
-        var stepResp = await admin.PostAsync($"/api/imports/{batchId}/step", null);
-        stepResp.StatusCode.Should().Be(HttpStatusCode.OK);
-        (await stepResp.Content.ReadFromJsonAsync<JsonElement>())
-            .GetProperty("done").GetBoolean().Should().BeTrue();
-
-        return new ImportedFile(folderId, folderFileId);
+        var folderId = await TestHelpers.CreateFolderAsync(admin, $"PromoteE2E-{Guid.NewGuid():N}");
+        await TestHelpers.SetTargetAsync(admin, folderId, "Draft");
+        var file = await TestHelpers.ImportedAsync(admin, folderId, sampleFile);
+        return new ImportedFile(folderId, file.GetProperty("id").GetGuid());
     }
 
     private async Task<JsonElement> PromoteAsync(HttpClient admin, Guid folderFileId, bool deleteMissing = false)
@@ -328,15 +248,4 @@ public class PromoteFlowTests
         return client;
     }
 
-    private static string ResolveSamplePath(string fileName)
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null)
-        {
-            var candidate = Path.Combine(dir.FullName, "samples", fileName);
-            if (File.Exists(candidate)) return candidate;
-            dir = dir.Parent;
-        }
-        throw new FileNotFoundException($"Cannot locate samples/{fileName}");
-    }
 }

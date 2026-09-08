@@ -1,15 +1,7 @@
+using Dip.Domain.Entities;
 using Dip.Domain.Enums;
 
 namespace Dip.Api.Features.Imports;
-
-public sealed record StartImportResult(Guid ImportBatchId, int TotalRows);
-
-public sealed record RunStepResult(
-    Guid ImportBatchId,
-    int Processed,
-    int Total,
-    bool Done,
-    ImportBatchSummary Batch);
 
 public sealed record ImportBatchSummary(
     Guid Id,
@@ -25,4 +17,10 @@ public sealed record ImportBatchSummary(
     int RowsUpdated,
     int RowsSkipped,
     bool Completed,
-    string? Log);
+    string? Log)
+{
+    public static ImportBatchSummary From(ImportBatch b) => new(
+        b.Id, b.ProjectId, b.Kind, b.Target, b.FolderFileId, b.FileName,
+        b.ImportedAt, b.ImportedBy, b.RowsRead, b.RowsInserted, b.RowsUpdated,
+        b.RowsSkipped, b.Completed, b.Log);
+}

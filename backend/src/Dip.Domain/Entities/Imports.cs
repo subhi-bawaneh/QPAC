@@ -22,14 +22,3 @@ public class ImportBatch : Entity
     public Project? Project { get; set; }
     public FolderFile? FolderFile { get; set; }
 }
-
-// Chunked-import staging: one row per parsed excel row, kept until the whole file
-// is materialized. Cleaned up after Completed. Enables resume-on-error and progress bars.
-public class ImportStagingRow : Entity
-{
-    public Guid ImportBatchId { get; set; }
-    public int RowNumber { get; set; }
-    public string PayloadJson { get; set; } = "{}";
-    public bool Processed { get; set; }
-    public string? Error { get; set; }
-}

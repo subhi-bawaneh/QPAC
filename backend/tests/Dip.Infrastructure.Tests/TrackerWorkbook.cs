@@ -17,7 +17,7 @@ namespace Dip.Infrastructure.Tests;
 internal static class TrackerWorkbook
 {
     public static IExcelWorkbook Open() =>
-        new ClosedXmlReader().Open(SampleFiles.Path("Tracker.xlsx"));
+        new ClosedXmlReader().Open(SampleFiles.Open("Tracker.xlsx"));
 
     // ------------------------------------------------------------------ inputs
 

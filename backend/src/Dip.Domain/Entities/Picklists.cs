@@ -11,6 +11,11 @@ public class PicklistItem : Entity
     public string Description { get; set; } = string.Empty;
     public int SortOrder { get; set; }
 
+    // Soft delete (refactor-plan § 3 R9): deleted codes stay out of every read and
+    // are never resurrected by a re-import, so an operator's decision survives.
+    public bool IsDeleted { get; set; }
+    public DateTime? DeletedAt { get; set; }
+
     public Project? Project { get; set; }
 }
 
@@ -22,6 +27,9 @@ public class StatusMapping : Entity
 
     // Kept as data so operators can edit mappings from /admin/lists without a code change.
     public bool IsLegacy { get; set; }
+
+    public bool IsDeleted { get; set; }
+    public DateTime? DeletedAt { get; set; }
 
     public Project? Project { get; set; }
 }

@@ -22,15 +22,16 @@ public sealed class GetFolderHandler : IQueryHandler<GetFolderQuery, FolderDetai
             .Select(f => new FolderNode(
                 f.Id, f.ParentId, f.Name, f.Path, f.Target, f.DriveFolderId, f.LastSyncedAt,
                 _db.Folders.Count(c => c.ParentId == f.Id && !c.IsDeleted),
-                _db.FolderFiles.Count(x => x.FolderId == f.Id)))
+                _db.FolderFiles.Count(x => x.FolderId == f.Id && !x.IsDeleted)))
             .ToListAsync(ct);
 
         var files = await _db.FolderFiles.AsNoTracking()
-            .Where(x => x.FolderId == folder.Id)
+            .Where(x => x.FolderId == folder.Id && !x.IsDeleted)
             .OrderBy(x => x.Name)
             .Select(x => new FolderFileDto(
-                x.Id, x.Name, x.Kind, x.Source, x.State,
-                x.SizeBytes, x.DriveModifiedAt, x.DriveFileId, x.Md5))
+                x.Id, x.Name, x.Kind, x.ContentSource, x.ContentModifiedAt,
+                x.DriveFileId, x.DriveModifiedAt, x.SizeBytes,
+                x.State, x.ImportError, x.LastImportedAt))
             .ToListAsync(ct);
 
         var self = new FolderNode(

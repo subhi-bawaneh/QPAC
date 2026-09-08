@@ -48,7 +48,7 @@ public class TidpImporterTests : IClassFixture<ImporterFixture>
         var firstScope = _fixture.CreateScope();
         var first = await firstScope.ServiceProvider.GetRequiredService<TidpImporter>().ImportAsync(
             _fixture.QpacProjectId,
-            SampleFiles.Path("TIDP-STL.xlsx"),
+            SampleFiles.Open("TIDP-STL.xlsx"),
             DataTarget.Live,
             folderFileId: null,
             importBatchId: null,
@@ -88,7 +88,7 @@ public class TidpImporterTests : IClassFixture<ImporterFixture>
         // zero inserts.
         var secondScope = _fixture.CreateScope();
         var second = await secondScope.ServiceProvider.GetRequiredService<TidpImporter>().ImportAsync(
-            _fixture.QpacProjectId, SampleFiles.Path("TIDP-STL.xlsx"),
+            _fixture.QpacProjectId, SampleFiles.Open("TIDP-STL.xlsx"),
             DataTarget.Live, null, null, "test", CancellationToken.None);
         secondScope.Dispose();
 
@@ -119,7 +119,7 @@ public class TidpImporterTests : IClassFixture<ImporterFixture>
             FolderId = folder.Id,
             Name = "TIDP-STL.xlsx",
             Kind = FileKind.Tidp,
-            Source = FileSource.Upload,
+            ContentSource = FileSource.Upload,
             State = ImportState.NotImported,
         };
         db.FolderFiles.Add(file);
@@ -138,7 +138,7 @@ public class TidpImporterTests : IClassFixture<ImporterFixture>
 
         var result = await importer.ImportAsync(
             _fixture.QpacProjectId,
-            SampleFiles.Path("TIDP-STL.xlsx"),
+            SampleFiles.Open("TIDP-STL.xlsx"),
             DataTarget.Draft,
             folderFileId: file.Id,
             importBatchId: batch.Id,

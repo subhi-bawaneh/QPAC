@@ -46,14 +46,14 @@ public sealed class AconexHistoryImporter
 
     public async Task<ImportResult> ImportAsync(
         Guid projectId,
-        string filePath,
+        Stream content,
         Guid importBatchId,
         string importedBy,
         CancellationToken ct)
     {
         _ = importedBy;
 
-        using var wb = _reader.Open(filePath);
+        using var wb = _reader.Open(content);
         // Different workbooks use different sheet names for the same data:
         //   MIDP.xlsx     -> "Aconex History"
         //   Tracker.xlsx  -> "SHD_History"

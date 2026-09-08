@@ -90,6 +90,22 @@ public static class DependencyInjection
                     IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(key)),
                     ClockSkew = TimeSpan.FromMinutes(1),
                 };
+
+                // SignalR's WebSocket handshake cannot set an Authorization header,
+                // so the hub client passes the token in the query string instead.
+                options.Events = new JwtBearerEvents
+                {
+                    OnMessageReceived = context =>
+                    {
+                        var accessToken = context.Request.Query["access_token"];
+                        if (!string.IsNullOrEmpty(accessToken)
+                            && context.HttpContext.Request.Path.StartsWithSegments("/hubs"))
+                        {
+                            context.Token = accessToken;
+                        }
+                        return Task.CompletedTask;
+                    },
+                };
             });
 
         services.AddAuthorization();
@@ -123,8 +139,10 @@ public static class DependencyInjection
             {
                 if (corsOrigins.Length == 0)
                 {
-                    // Development only, by the guard above.
-                    policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod();
+                    // Development only, by the guard above. Not AllowAnyOrigin: the
+                    // SignalR negotiate call sends credentials, which "*" forbids.
+                    policy.WithOrigins("http://localhost:5173")
+                        .AllowAnyHeader().AllowAnyMethod().AllowCredentials();
                     return;
                 }
 
@@ -163,8 +181,20 @@ public static class DependencyInjection
 
         services.AddScoped<IDispatcher, Dispatcher.Dispatcher>();
         services.AddScoped<ICurrentUser, CurrentUser>();
-        services.AddScoped<Features.Imports.ImportDispatcher>();
         services.AddScoped<Features.Recalculation.RecalculationService>();
+
+        // Background pipeline: a process-wide queue and status, scoped services that
+        // do the work, and the two hosted workers that drive them (decision D4).
+        services.AddSignalR();
+        services.AddSingleton<Workers.WorkQueue>();
+        services.AddSingleton<Workers.WorkerState>();
+        services.AddSingleton<Workers.SyncTrigger>();
+        services.AddSingleton<Workers.ISyncTrigger>(sp => sp.GetRequiredService<Workers.SyncTrigger>());
+        services.AddSingleton<Hubs.ISyncNotifier, Hubs.HubSyncNotifier>();
+        services.AddScoped<Workers.DriveSyncService>();
+        services.AddScoped<Workers.FileImportService>();
+        services.AddHostedService<Workers.DriveSyncWorker>();
+        services.AddHostedService<Workers.ImportWorker>();
 
         // Pipeline behaviors — order matters: Logging first, Auth second, then Validation, then Transaction (commands only).
         services.AddScoped(typeof(IPipelineBehavior<,>), typeof(LoggingBehavior<,>));

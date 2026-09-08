@@ -7,8 +7,9 @@ namespace Dip.Application.Abstractions;
 // Dip.Infrastructure/Excel.
 public interface IExcelReader
 {
+    // Stream only: workbook bytes come from FileBlob, never from the file system
+    // (refactor-plan decision D2).
     IExcelWorkbook Open(Stream stream);
-    IExcelWorkbook Open(string filePath);
 }
 
 public interface IExcelWorkbook : IDisposable

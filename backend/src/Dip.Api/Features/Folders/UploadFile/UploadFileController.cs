@@ -8,26 +8,25 @@ namespace Dip.Api.Features.Folders.UploadFile;
 [Authorize]
 public sealed class UploadFileController : ApiControllerBase
 {
-    // Multipart form data; single "file" part. Max upload size is enforced by
-    // ASPMonster's IIS config (50 MB per PLAN.md § 1) and the app-wide
-    // FormOptions.MultipartBodyLengthLimit set in AddApi().
+    // Multipart form data; single "file" part. 202 because the import itself runs
+    // in the background worker and the caller follows it over the sync hub.
     [HttpPost]
-    [ProducesResponseType(typeof(Guid), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(UploadResult), StatusCodes.Status202Accepted)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [RequestSizeLimit(50 * 1024 * 1024)]
-    public async Task<ActionResult<Guid>> Post(Guid folderId, IFormFile file, CancellationToken ct)
+    [RequestSizeLimit(UploadFileValidator.MaxBytes)]
+    public async Task<ActionResult<UploadResult>> Post(Guid folderId, IFormFile file, CancellationToken ct)
     {
-        if (file is null || file.Length == 0)
+        using var buffer = new MemoryStream();
+        if (file is not null)
         {
-            return BadRequest(new { error = "No file supplied" });
+            await file.CopyToAsync(buffer, ct);
         }
 
-        await using var stream = file.OpenReadStream();
-        var id = await Dispatcher.Send(
-            new UploadFileCommand(folderId, file.FileName, file.Length, stream),
+        var result = await Dispatcher.Send(
+            new UploadFileCommand(folderId, file?.FileName ?? string.Empty, buffer.ToArray()),
             ct);
-        return CreatedAtAction("Get", "GetFolder", new { id = folderId }, id);
+        return Accepted(result);
     }
 }

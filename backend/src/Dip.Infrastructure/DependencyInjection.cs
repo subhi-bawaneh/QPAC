@@ -49,8 +49,6 @@ public static class DependencyInjection
         services.Configure<GoogleDriveOptions>(configuration.GetSection(GoogleDriveOptions.SectionName));
         services.AddHttpClient<IDriveClient, ApiKeyDriveClient>();
 
-        services.AddSingleton<ILocalFileStorage, Storage.LocalFileStorage>();
-
         services.AddSingleton<IExcelReader, Excel.ClosedXmlReader>();
         services.AddSingleton<IReportExporter, Excel.ClosedXmlReportExporter>();
 
