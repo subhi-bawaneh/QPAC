@@ -416,7 +416,7 @@ Tests       117 passed (117)
 | R4 | `61b08dd` | Frontend: Drive-like explorer, SignalR progress, Dashboard at / |
 | R5 | `ee86f9b` | Workbook viewer: the file opens as a spreadsheet |
 | R6 | `b546911` | Lists page: every list editable, with soft delete and restore |
-| R7 | this commit | Docs, deploy and plan aligned with v3 |
+| R7 | `d907d15` | Docs, deploy and plan aligned with v3 |
 
 ---
 
