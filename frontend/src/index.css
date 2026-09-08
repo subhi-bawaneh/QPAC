@@ -8,6 +8,10 @@
  */
 @layer base {
   :root {
+    /* Tells the browser which palette its own chrome should use — form controls,
+       the caret, the default scrollbar before ours applies. */
+    color-scheme: light;
+
     --background: 0 0% 100%;
     --foreground: 222 47% 11%;
 
@@ -43,6 +47,8 @@
   }
 
   .dark {
+    color-scheme: dark;
+
     --background: 222 47% 9%;
     --foreground: 210 40% 98%;
 
