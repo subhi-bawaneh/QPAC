@@ -29,9 +29,6 @@ export function Sidebar() {
             >
               <item.icon className="h-4 w-4 shrink-0" aria-hidden />
               <span className="flex-1">{item.label}</span>
-              {item.phase ? (
-                <span className="text-[10px] uppercase text-muted-foreground">{item.phase}</span>
-              ) : null}
             </NavLink>
           </li>
         ))}

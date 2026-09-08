@@ -38,6 +38,19 @@ describe('Sidebar', () => {
     expect(screen.queryByRole('link', { name: /users/i })).not.toBeInTheDocument()
   })
 
+  it('shows nothing to a user with no permissions', () => {
+    renderSidebar([])
+
+    expect(screen.queryAllByRole('link')).toHaveLength(0)
+  })
+
+  it('no longer lists Summary or Control Findings — both live on the Dashboard', () => {
+    renderSidebar([Permissions.reportsView])
+
+    expect(screen.queryByRole('link', { name: /summary/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /control findings/i })).not.toBeInTheDocument()
+  })
+
   it('gives an admin the admin entries', () => {
     renderSidebar([Permissions.reportsView, Permissions.usersManage, Permissions.projectSettings])
 

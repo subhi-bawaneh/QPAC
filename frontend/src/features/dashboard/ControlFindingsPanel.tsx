@@ -58,7 +58,7 @@ interface ControlFindings {
   duplicates: DuplicateDocument[]
 }
 
-export function ControlFindingsPage() {
+export function ControlFindingsPanel() {
   const [tab, setTab] = useState('delivered')
   const [exportError, setExportError] = useState<string | null>(null)
   const { can } = useAuth()
@@ -88,14 +88,11 @@ export function ControlFindingsPage() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold">Control Findings</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Four reports of things that do not add up: work delivered that nobody planned,
-            work planned against no baseline, packages nothing was assigned to, and numbers
-            used twice.
-          </p>
-        </div>
+        <p className="max-w-3xl text-sm text-muted-foreground">
+          Four reports of things that do not add up: work delivered that nobody planned,
+          work planned against no baseline, packages nothing was assigned to, and numbers
+          used twice.
+        </p>
 
         {can(Permissions.reportsExport) ? (
           <Button variant="outline" size="sm" onClick={() => void onExport()}>

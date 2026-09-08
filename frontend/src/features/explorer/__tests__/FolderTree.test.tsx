@@ -10,6 +10,10 @@ const node = (name: string, children: FolderTreeNode[] = [], target: 'Live' | 'D
   name,
   path: name,
   target,
+  isCompany: false,
+  authorName: null,
+  fileCount: 0,
+  hasNewerDraft: false,
   children,
 })
 
@@ -62,6 +66,6 @@ describe('FolderTree', () => {
 
     await user.click(screen.getByRole('button', { name: /expand 01\.NAP/i }))
 
-    expect(screen.getByText('Draft')).toBeInTheDocument()
+    expect(screen.getByText('DB1 Draft')).toBeInTheDocument()
   })
 })

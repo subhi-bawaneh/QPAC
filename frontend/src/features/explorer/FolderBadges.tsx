@@ -1,9 +1,9 @@
 import { Badge } from '@/shared/ui/badge'
 import type { DataTarget, FileKind, ImportState } from '@/shared/api/types'
 
-/** Live vs Draft decides where an import of this folder's files lands (PLAN.md § 3.4). */
+/** Live vs Draft decides which layer this folder's rows count in (refactor-plan § 3 R8). */
 export function TargetBadge({ target }: { target: DataTarget }) {
-  return <Badge tone={target === 'Draft' ? 'warning' : 'info'}>{target}</Badge>
+  return <Badge tone={target === 'Draft' ? 'warning' : 'info'}>{target === 'Draft' ? 'DB1 Draft' : 'DB2 Live'}</Badge>
 }
 
 const stateTone = {
@@ -36,4 +36,9 @@ const kindLabel: Record<FileKind, string> = {
 
 export function FileKindBadge({ kind }: { kind: FileKind }) {
   return <Badge tone={kind === 'Unknown' ? 'neutral' : 'info'}>{kindLabel[kind]}</Badge>
+}
+
+/** Drive has refreshed the draft since the last promote — Convert can run again. */
+export function NewerDraftBadge() {
+  return <Badge tone="warning">Drive has newer data</Badge>
 }

@@ -6,6 +6,7 @@ import type { TrackerRow } from '@/shared/api/types'
 
 const row: TrackerRow = {
   documentId: 'doc-1',
+  layer: 'Live',
   documentNumber: 'QF01012-NES-C04518-SDW-STL-00-Z00000-0ZZ0004',
   type: 'SDW',
   discipline: 'Structural',

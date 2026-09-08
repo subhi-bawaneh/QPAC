@@ -7,7 +7,7 @@ import { Tabs, TabPanel, type TabItem } from '@/shared/ui/tabs'
 import { apiErrorMessage } from '@/shared/api/client'
 import { formatDate } from '@/shared/lib/utils'
 import type { PromoteResult, PromoteRow } from '@/shared/api/types'
-import { usePromote, usePromoteDiff, useRollbackPromote } from './api'
+import { usePromote, usePromoteDiff } from './api'
 
 export function PromoteDialog({ open, onClose, folderFileId }: {
   open: boolean
@@ -17,12 +17,10 @@ export function PromoteDialog({ open, onClose, folderFileId }: {
   const [tab, setTab] = useState('added')
   const [deleteMissing, setDeleteMissing] = useState(false)
   const [result, setResult] = useState<PromoteResult | null>(null)
-  const [rolledBack, setRolledBack] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const diff = usePromoteDiff(folderFileId, open)
   const promote = usePromote(folderFileId)
-  const rollback = useRollbackPromote(folderFileId)
 
   const tabs = useMemo<TabItem[]>(() => [
     { id: 'added', label: 'Added', count: diff.data?.added },
@@ -35,22 +33,12 @@ export function PromoteDialog({ open, onClose, folderFileId }: {
     setError(null)
     try {
       setResult(await promote.mutateAsync({ deleteMissing }))
-      setRolledBack(false)
     } catch (caught) {
       setError(apiErrorMessage(caught, 'The promote failed'))
     }
   }
 
-  const onRollback = async () => {
-    if (!result) return
-    setError(null)
-    try {
-      await rollback.mutateAsync(result.promoteBatchId)
-      setRolledBack(true)
-    } catch (caught) {
-      setError(apiErrorMessage(caught, 'The rollback failed'))
-    }
-  }
+
 
   return (
     <Dialog
@@ -110,7 +98,7 @@ export function PromoteDialog({ open, onClose, folderFileId }: {
 
         {result ? (
           <div className="space-y-2 rounded-md bg-muted px-3 py-3 text-sm">
-            <p className="font-medium">{rolledBack ? 'Promote rolled back' : 'Promoted'}</p>
+            <p className="font-medium">Promoted</p>
             <ul className="text-muted-foreground">
               <li>Added: {result.added.toLocaleString('en-GB')}</li>
               <li>Updated: {result.updated.toLocaleString('en-GB')}</li>
@@ -118,9 +106,9 @@ export function PromoteDialog({ open, onClose, folderFileId }: {
               <li>Skipped: {result.skipped.toLocaleString('en-GB')}</li>
               <li>Conflicts: {result.conflicts.toLocaleString('en-GB')}</li>
             </ul>
-            {result.recalculationRequired && !rolledBack ? (
+            {result.recalculationRequired ? (
               <p className="text-xs">
-                Reports are stale until the project is recalculated.
+                The reports rebuild on their own; the worker has been asked to recalculate.
               </p>
             ) : null}
           </div>
@@ -133,15 +121,9 @@ export function PromoteDialog({ open, onClose, folderFileId }: {
         ) : null}
 
         <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={promote.isPending || rollback.isPending}>
+          <Button variant="outline" onClick={onClose} disabled={promote.isPending}>
             {result ? 'Close' : 'Cancel'}
           </Button>
-
-          {result && !rolledBack ? (
-            <Button variant="destructive" onClick={() => void onRollback()} disabled={rollback.isPending}>
-              {rollback.isPending ? 'Rolling back…' : 'Roll back'}
-            </Button>
-          ) : null}
 
           {!result ? (
             <Button

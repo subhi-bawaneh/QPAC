@@ -146,7 +146,7 @@ describe('PromoteDialog', () => {
     }))
 
     expect(await screen.findByText('Promoted')).toBeInTheDocument()
-    expect(screen.getByText(/reports are stale/i)).toBeInTheDocument()
+    expect(screen.getByText(/the worker has been asked to recalculate/i)).toBeInTheDocument()
   })
 
   it('sends deleteMissing when the user ticks it', async () => {
@@ -162,20 +162,15 @@ describe('PromoteDialog', () => {
     }))
   })
 
-  it('offers a rollback of the promote it just made', async () => {
+  // Rollback is gone (decision D7): AuditLog is the undo trail, so the dialog
+  // closes on the result instead of offering to undo it.
+  it('does not offer a rollback', async () => {
     const user = userEvent.setup()
     renderDialog()
 
     await user.click(await screen.findByRole('button', { name: /^promote$/i }))
-    const rollback = await screen.findByRole('button', { name: /roll back/i })
+    await screen.findByText('Promoted')
 
-    post.mockResolvedValueOnce({
-      data: { promoteBatchId: 'promote-1', removed: 2, restored: 1, reinserted: 0, recalculationRequired: true },
-    })
-    await user.click(rollback)
-
-    await waitFor(() =>
-      expect(post).toHaveBeenCalledWith('/api/drafts/promote/promote-1/rollback'))
-    expect(await screen.findByText('Promote rolled back')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /roll back/i })).not.toBeInTheDocument()
   })
 })

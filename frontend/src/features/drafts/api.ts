@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/shared/api/client'
 import type {
   DraftDocument, DraftDocumentEdit, DraftRowState, PagedResult,
-  PromoteDiff, PromoteResult, RollbackResult,
+  PromoteDiff, PromoteResult,
 } from '@/shared/api/types'
 
 export interface DraftFilters {
@@ -95,19 +95,6 @@ export function usePromote(folderFileId: string) {
         folderFileId,
         deleteMissing: input.deleteMissing,
       })
-      return data
-    },
-    onSuccess: invalidate,
-  })
-}
-
-export function useRollbackPromote(folderFileId: string) {
-  const invalidate = useDraftInvalidation(folderFileId)
-  return useMutation({
-    mutationFn: async (promoteBatchId: string) => {
-      const { data } = await api.post<RollbackResult>(
-        `/api/drafts/promote/${promoteBatchId}/rollback`,
-      )
       return data
     },
     onSuccess: invalidate,

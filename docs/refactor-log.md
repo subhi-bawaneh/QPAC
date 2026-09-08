@@ -232,3 +232,65 @@ Passed! - Failed: 0, Passed:  44, Skipped: 0, Total:  44 - Dip.Infrastructure.Te
 Passed! - Failed: 0, Passed:  69, Skipped: 0, Total:  69 - Dip.Api.IntegrationTests.dll
 ```
 `dotnet build`: 0 warnings, 0 errors.
+
+---
+
+## R4 — Frontend: explorer grid, realtime, dashboard swap, navigation
+
+### What changed
+- **`shared/realtime/`**: `syncHub.ts` (one `HubConnectionBuilder` to `${apiBaseUrl}/hubs/sync` with an
+  `accessTokenFactory` read on every connect, `withAutomaticReconnect`), `SyncHubProvider` (joins the
+  project group, exposes `connecting | connected | reconnecting | disconnected`), `useSyncEvent`, and
+  `invalidation.ts` — the event → TanStack query mapping, kept as data so it is testable without a
+  live socket. `RealtimeGate` opens the connection once the user is signed in.
+- **`shared/ui/toast.tsx`**: a minimal shadcn-style toaster (no new package) for sync and import
+  progress.
+- **`features/explorer/`** replaces `features/folders/`: `ExplorerPage`, `ExplorerToolbar` (breadcrumb,
+  Upload, Sync now, target switch, Company/Author, Convert to Live, New folder, Drive status pill),
+  `TileGrid` + `FolderTile` + `FileTile` (Drive-like 160×132 tiles, folders before files, click to
+  select, double-click to open, arrow keys, right-click menu, drag-and-drop upload, a spinner from
+  `fileImportStarted` until `fileImported`/`fileFailed`), `ContextMenu` (the existing `DropdownMenu`
+  anchored at the pointer — no new package), `UploadDialog` (multi-file, 202 handling),
+  `ConvertToLiveDialog` (per-file promote diff before, result table after), `CompanyDialog`.
+- **Dashboard at `/`** (decision D8): `features/summary/` and `features/findings/` folded into
+  `features/dashboard/` as five tabs — Overview · Corporate · Baseline · Control Findings · EVM.
+  The old welcome page is gone; the route is lazy so Recharts is not in the entry bundle.
+- **Navigation**: Dashboard · TIDPs · MIDP · Baseline · Tracker · Lists · Users · Settings. The
+  Dashboard now requires `reports.view` like the reports it contains, so an empty permission set
+  sees nothing.
+- **Types**: `FolderTreeNode`/`FolderNode`/`FolderFileSummary` reshaped, `UploadResult`,
+  `DriveStatus`, `TriggerSyncResult`, `SetTargetResult`, `ConvertToLiveResult`, `DocumentRow`, the
+  `Workbook` family, `PicklistField` as a union of the 17 names, `isDeleted`/`deletedAt` on list
+  rows, `TrackerRow.layer`; `StartImportResult`, `RunImportStepResult` and `RollbackResult` deleted.
+- **Rollback removed from the UI**: `useRollbackPromote` and the dialog's Roll back button are gone
+  (decision D7); the dialog now says the worker has been asked to recalculate.
+
+### Removed files
+`features/folders/` (api, FolderExplorerPage, FileList, SyncDriveDialog and their tests),
+`features/imports/` (api, ImportDialog, kinds and its test), `features/summary/SummaryPage.tsx`,
+`features/findings/ControlFindingsPage.tsx`, the old `features/dashboard/DashboardPage.tsx`.
+`FolderTree`, `FolderBadges` and `UploadDialog` moved into `features/explorer/`; the summary charts
+and api moved into `features/dashboard/`.
+
+### New packages (§ 9.4)
+`@microsoft/signalr` (hub client — no alternative) and `@tanstack/react-virtual` (installed here,
+used by the R5 grid: the MIDP sheet's 15,883 rows freeze the tab if all are rendered).
+
+### Deviations
+15. **`/files/:fileId` is registered in R5, not R4.** § 6.6 puts the route in R4 and the page in R5;
+    a route pointing at a module that does not exist yet does not compile. In R4 opening a file
+    therefore opens the draft review for a Draft-layer file and downloads a Live one; R5 introduces
+    the route and repoints Open at the viewer.
+16. **Provider/hook files split.** `useSyncHub`/`useToast` live in their own modules next to their
+    providers (`syncHubContext.ts` + `SyncHubProvider.tsx`, `toastContext.ts` + `useToast.ts`),
+    matching the existing `authContext`/`AuthProvider`/`useAuth` split, so `npm run lint` stays at
+    zero warnings.
+17. **`navigation.test.ts`'s "dashboard needs no permission" case became "an empty permission set
+    sees nothing"**, as § 6.6 asks.
+
+### Test summary
+```
+Test Files  19 passed (19)
+Tests       90 passed (90)
+```
+`npm run lint`: 0 errors, 0 warnings. `npm run typecheck`: clean. `npm run build`: succeeds.

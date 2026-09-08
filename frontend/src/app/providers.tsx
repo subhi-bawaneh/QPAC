@@ -2,6 +2,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import { AuthProvider } from '@/shared/auth/AuthProvider'
+import { ToastProvider } from '@/shared/ui/toast'
+import { RealtimeGate } from './RealtimeGate'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -19,7 +21,11 @@ export function Providers({ children }: { children: ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider>
+          <ToastProvider>
+            <RealtimeGate>{children}</RealtimeGate>
+          </ToastProvider>
+        </AuthProvider>
       </BrowserRouter>
     </QueryClientProvider>
   )

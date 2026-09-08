@@ -69,7 +69,19 @@ function TreeNode({ node, depth, selectedId, onSelect }: {
             ? <FolderOpen className="h-4 w-4 shrink-0" aria-hidden />
             : <Folder className="h-4 w-4 shrink-0" aria-hidden />}
           <span className="truncate">{node.name}</span>
+          {node.authorName ? (
+            <span className="truncate text-xs text-muted-foreground">{node.authorName}</span>
+          ) : null}
         </button>
+
+        {/* One dot for the whole branch: the badge survives a collapsed tree. */}
+        {node.hasNewerDraft ? (
+          <span
+            aria-label={`${node.name} has newer Drive data`}
+            title="Drive has newer data"
+            className="h-2 w-2 shrink-0 rounded-full bg-amber-500"
+          />
+        ) : null}
 
         {node.target === 'Draft' ? <TargetBadge target={node.target} /> : null}
       </div>

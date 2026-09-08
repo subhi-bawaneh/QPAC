@@ -32,6 +32,11 @@ export interface FolderTreeNode {
   name: string
   path: string
   target: DataTarget
+  isCompany: boolean
+  authorName: string | null
+  fileCount: number
+  /** Drive holds rows the Live layer has not taken yet, here or below. */
+  hasNewerDraft: boolean
   children: FolderTreeNode[]
 }
 
@@ -44,8 +49,12 @@ export interface FolderNode {
   target: DataTarget
   driveFolderId: string | null
   lastSyncedAt: string | null
+  isCompany: boolean
+  authorId: string | null
+  authorName: string | null
   childCount: number
   fileCount: number
+  hasNewerDraft: boolean
 }
 
 export interface FolderDetail {
@@ -54,29 +63,69 @@ export interface FolderDetail {
   files: FolderFileSummary[]
 }
 
-export interface StartImportResult {
-  importBatchId: string
-  totalRows: number
-}
-
-export interface RunImportStepResult {
-  importBatchId: string
-  processed: number
-  total: number
-  done: boolean
-  batch: ImportBatchSummary
-}
-
 export interface FolderFileSummary {
   id: string
   name: string
   kind: FileKind
-  source: FileSource
-  state: ImportState
-  sizeBytes: number
-  driveModifiedAt: string | null
+  contentSource: FileSource
+  contentModifiedAt: string
   driveFileId: string | null
-  md5: string | null
+  driveModifiedAt: string | null
+  sizeBytes: number
+  state: ImportState
+  importError: string | null
+  lastImportedAt: string | null
+  /** Draft or Live rows this file produced, whichever layer its folder targets. */
+  rowCount: number | null
+  hasNewerDraft: boolean
+  effectiveLayer: DataTarget
+}
+
+/** 202 body of POST /api/folders/{id}/files — the import runs in the worker. */
+export interface UploadResult {
+  fileId: string
+  name: string
+  replaced: boolean
+}
+
+export interface DriveStatus {
+  isRunning: boolean
+  lastRunStartedAt: string | null
+  lastRunFinishedAt: string | null
+  lastRunError: string | null
+  nextRunAt: string | null
+  queuedImports: number
+}
+
+export interface TriggerSyncResult {
+  queued: boolean
+  alreadyRunning: boolean
+}
+
+export interface SetTargetResult {
+  folderId: string
+  target: DataTarget
+  foldersUpdated: number
+}
+
+export interface ConvertedFile {
+  fileId: string
+  name: string
+  added: number
+  updated: number
+  deleted: number
+  conflicts: number
+}
+
+export interface ConvertToLiveResult {
+  folderId: string
+  filesConverted: number
+  added: number
+  updated: number
+  deleted: number
+  skipped: number
+  conflicts: number
+  perFile: ConvertedFile[]
 }
 
 export interface ImportBatchSummary {
@@ -218,14 +267,6 @@ export interface PromoteResult {
   recalculationRequired: boolean
 }
 
-export interface RollbackResult {
-  promoteBatchId: string
-  removed: number
-  restored: number
-  reinserted: number
-  recalculationRequired: boolean
-}
-
 // ---------------------------------------------------------------- reports
 
 export type UnifiedStatus = 'Approved' | 'Rejected' | 'UnderReview' | 'Withdrawn'
@@ -233,6 +274,7 @@ export type BaselineActivityType = 'Submittal' | 'Approval'
 
 export interface TrackerRow {
   documentId: string
+  layer: DataTarget
   documentNumber: string
   type: string
   discipline: string
@@ -288,15 +330,24 @@ export interface BaselineActivityRow {
   used: boolean
 }
 
+/** The 17 lists of the Picklists workbook (refactor-plan § 7). */
+export type PicklistField =
+  | 'Project' | 'Originator' | 'Contract' | 'DocType' | 'Discipline' | 'Zone' | 'Building'
+  | 'DrawingType' | 'Level' | 'AuthoringSoftware' | 'ExchangeFormat' | 'ScopeArea'
+  | 'SuitabilityCode' | 'Scale' | 'Classification' | 'CorporateDiscipline' | 'Author'
+
 export interface PicklistItem {
   id: string
+  field: PicklistField
   code: string
   description: string
   sortOrder: number
+  isDeleted: boolean
+  deletedAt: string | null
 }
 
 export interface PicklistGroup {
-  field: string
+  field: PicklistField
   items: PicklistItem[]
 }
 
@@ -305,4 +356,88 @@ export interface StatusMappingRow {
   aconexStatus: string
   status: UnifiedStatus
   isLegacy: boolean
+  isDeleted: boolean
+  deletedAt: string | null
+}
+
+/** The editable Live document row (PUT /api/documents/{id}). */
+export interface DocumentRow {
+  id: string
+  projectId: string
+  tidpId: string
+  disciplineId: string
+  folderFileId: string | null
+  documentNumber: string
+  title: string
+  extractedFromModel: string | null
+  scopeArea: string | null
+  authoringSoftware: string | null
+  exchangeFormat: string | null
+  scale: string | null
+  deliveryMilestone: string | null
+  packageName: string | null
+  activityId: string | null
+  classificationCode: string | null
+  f01Project: string
+  f02Originator: string
+  f03Contract: string
+  f04DocType: string
+  f05Discipline: string
+  f06Zone: string
+  f07Building: string
+  f08ADrawingType: string
+  f08BLevel: string
+  f08CSequence: string
+  corporateDiscipline: string
+  budgetWeight: number
+  updatedAt: string
+  updatedBy: string
+  exchanges: DraftExchange[]
+}
+
+// ------------------------------------------------------------- workbook view
+
+export type WorkbookColumnKind = 'text' | 'date' | 'int'
+
+export interface WorkbookColumn {
+  letter: string
+  title: string
+  key: string
+  width: number
+  editable: boolean
+  kind: WorkbookColumnKind
+}
+
+export interface WorkbookHeaderCell {
+  label: string
+  value: string | null
+}
+
+export interface WorkbookRow {
+  rowId: string
+  rowNumber: number
+  cells: (string | null)[]
+  state: DraftRowState | null
+}
+
+export interface WorkbookSheet {
+  name: string
+  headerBlock: WorkbookHeaderCell[]
+  columns: WorkbookColumn[]
+  totalRows: number
+  page: number
+  pageSize: number
+  rows: WorkbookRow[]
+}
+
+export interface Workbook {
+  fileId: string
+  fileName: string
+  kind: FileKind
+  layer: DataTarget
+  contentSource: FileSource
+  contentModifiedAt: string
+  hasNewerDraft: boolean
+  sheets: string[]
+  sheet: WorkbookSheet
 }
