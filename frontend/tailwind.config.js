@@ -43,6 +43,17 @@ export default {
           foreground: 'hsl(var(--card-foreground))',
         },
         success: 'hsl(var(--success))',
+        // Explorer. Defined for both themes in index.css, never inverted.
+        folder: {
+          DEFAULT: 'hsl(var(--folder))',
+          shade: 'hsl(var(--folder-shade))',
+        },
+        file: {
+          DEFAULT: 'hsl(var(--file))',
+          accent: 'hsl(var(--file-accent))',
+        },
+        selection: 'hsl(var(--selection))',
+        'icon-label': 'hsl(var(--icon-label))',
         warning: 'hsl(var(--warning))',
       },
       borderRadius: {

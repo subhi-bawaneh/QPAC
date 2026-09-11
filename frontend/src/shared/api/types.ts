@@ -318,3 +318,10 @@ export interface AuditEntry {
   userId: string
   at: string
 }
+
+export interface Discipline {
+  id: string
+  code: string
+  corporateName: string
+  fileCount: number
+}

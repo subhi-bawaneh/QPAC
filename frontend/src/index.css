@@ -44,10 +44,28 @@
     --ring: 222 47% 31%;
 
     --radius: 0.5rem;
+
+    /* Explorer. A folder needs a fill and a darker shade for its tab, a selection needs
+       a soft ground rather than a border, and an icon label needs to sit quieter than
+       body text. Each is chosen for its own theme below, never inverted from the other. */
+    --folder: 41 88% 62%;
+    --folder-shade: 36 84% 48%;
+    --file: 210 22% 72%;
+    --file-accent: 152 52% 42%;
+    --selection: 222 47% 31%;
+    --icon-label: 222 20% 28%;
   }
 
   .dark {
     color-scheme: dark;
+    /* Warmer and less saturated than the light folder: the same yellow at this
+       lightness on a dark ground reads as a warning, not a folder. */
+    --folder: 41 62% 55%;
+    --folder-shade: 36 58% 42%;
+    --file: 215 16% 46%;
+    --file-accent: 152 42% 48%;
+    --selection: 213 70% 62%;
+    --icon-label: 210 30% 82%;
 
     --background: 222 47% 9%;
     --foreground: 210 40% 98%;

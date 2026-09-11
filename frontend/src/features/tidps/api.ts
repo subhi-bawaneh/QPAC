@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/shared/api/client'
-import type { DeleteResult, ReplacePreview, TidpFile, UploadAccepted } from '@/shared/api/types'
+import type { Discipline, DeleteResult, ReplacePreview, TidpFile, UploadAccepted } from '@/shared/api/types'
 
 // Every uploaded TIDP workbook, with its discipline and row counts. The explorer
 // groups by discipline client-side; disciplines with no file still appear there, so
@@ -10,6 +10,19 @@ export function useTidpFiles(projectId: string) {
     queryKey: ['tidp-files', projectId],
     queryFn: async () => {
       const { data } = await api.get<TidpFile[]>(`/api/projects/${projectId}/tidp-files`)
+      return data
+    },
+  })
+}
+
+// Every discipline, whether or not a TIDP has been uploaded for it: an empty discipline
+// is exactly the thing an operator needs to notice, so the explorer shows it as an empty
+// folder rather than hiding it.
+export function useDisciplines(projectId: string) {
+  return useQuery({
+    queryKey: ['disciplines', projectId],
+    queryFn: async () => {
+      const { data } = await api.get<Discipline[]>(`/api/projects/${projectId}/disciplines`)
       return data
     },
   })
@@ -65,7 +78,7 @@ export function useDeleteTidp() {
 }
 
 function invalidate(queryClient: ReturnType<typeof useQueryClient>) {
-  for (const key of ['tidp-files', 'imports', 'documents', 'tracker', 'summary', 'findings']) {
+  for (const key of ['tidp-files', 'disciplines', 'imports', 'documents', 'tracker', 'summary', 'findings']) {
     void queryClient.invalidateQueries({ queryKey: [key] })
   }
 }

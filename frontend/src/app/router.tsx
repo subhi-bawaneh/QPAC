@@ -5,7 +5,7 @@ import { RequireAuth, RequirePermission } from '@/shared/auth/RequireAuth'
 import { Permissions } from '@/shared/auth/permissions'
 import { LoginPage } from '@/features/auth/LoginPage'
 import { PlaceholderPage } from '@/features/placeholder/PlaceholderPage'
-import { TidpFilesPage } from '@/features/tidps/TidpFilesPage'
+import { TidpExplorerPage } from '@/features/tidps/TidpExplorerPage'
 import { AconexPage } from '@/features/aconex/AconexPage'
 import { TrackerPage } from '@/features/tracker/TrackerPage'
 import { MidpPage } from '@/features/midp/MidpPage'
@@ -42,7 +42,7 @@ export function AppRoutes() {
                 </Suspense>
               }
             />
-            <Route path="tidps" element={<TidpFilesPage />} />
+            <Route path="tidps" element={<TidpExplorerPage />} />
             <Route path="aconex" element={<AconexPage />} />
             <Route path="tidps/:tidpFileId" element={<WorkbookPage />} />
             <Route path="midp" element={<MidpPage />} />
