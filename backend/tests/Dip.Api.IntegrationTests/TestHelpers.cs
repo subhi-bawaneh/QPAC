@@ -91,6 +91,17 @@ internal static class TestHelpers
             });
         }
 
+        // Sequence widths are per project too, and the parser reads them for every row.
+        foreach (var (docType, width) in Infrastructure.Seeding.SeedPicklists.SerialWidths)
+        {
+            db.DocumentTypeSerials.Add(new Domain.Entities.DocumentTypeSerial
+            {
+                ProjectId = project.Id,
+                DocType = docType,
+                SequenceWidth = width,
+            });
+        }
+
         await db.SaveChangesAsync();
         return project.Id;
     }

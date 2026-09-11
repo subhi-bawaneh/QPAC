@@ -60,9 +60,15 @@ public class GetFileWorkbookTests
             cells[16], cells[17]) + "-" + cells[18] + cells[19] + cells[20];
         cells[0].Should().Be(composed);
 
-        // Leading zeros are preserved because every cell is a string.
+        // Leading zeros are preserved because every cell is a string, and the serial
+        // carries its document type's width — three digits for CAL and REP, four for
+        // SDW (DocumentTypeSerials). Padding every type to four is what used to turn
+        // this sample's 47 three-digit serials into numbers that exist nowhere.
         cells[16].Should().HaveLength(2);
-        cells[20].Should().HaveLength(4);
+        var width = Dip.Infrastructure.Seeding.SeedPicklists.SerialWidths
+            .Single(w => string.Equals(w.DocType, cells[14], StringComparison.OrdinalIgnoreCase))
+            .SequenceWidth;
+        cells[20].Should().HaveLength(width);
 
         // The sample's documented first document number is in the sheet.
         var whole = await TestHelpers.GetJsonAsync(

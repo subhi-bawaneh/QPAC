@@ -138,7 +138,9 @@ public sealed class RecalculationService
 
         var revisions = await _db.AconexRevisions
             .AsNoTracking()
-            .Where(a => a.ProjectId == projectId && numbers.Contains(a.DocNoFinal.ToUpper()))
+            .Where(a => a.ProjectId == projectId
+                && a.DocNoFinal != null
+                && numbers.Contains(a.DocNoFinal.ToUpper()))
             .ToListAsync(ct);
 
         var baseline = await _db.BaselineActivities

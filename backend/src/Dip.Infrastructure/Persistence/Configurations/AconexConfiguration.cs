@@ -13,7 +13,8 @@ internal sealed class AconexRevisionConfiguration : IEntityTypeConfiguration<Aco
         b.Property(x => x.FileType).HasMaxLength(20).IsRequired();
         b.Property(x => x.FileName).HasMaxLength(500).IsRequired();
         b.Property(x => x.AconexDocNo).HasMaxLength(300).IsRequired();
-        b.Property(x => x.DocNoFinal).HasMaxLength(200).IsRequired();
+        // Nullable: a raw value that is not a document number has no final number.
+        b.Property(x => x.DocNoFinal).HasMaxLength(200);
         b.Property(x => x.Revision).HasMaxLength(10).IsRequired();
         b.Property(x => x.Title).HasMaxLength(500);
         b.Property(x => x.AconexStatus).HasMaxLength(100).IsRequired();

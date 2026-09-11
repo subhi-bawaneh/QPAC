@@ -26,6 +26,7 @@ public class DipDbContext
     public DbSet<Discipline> Disciplines => Set<Discipline>();
     public DbSet<PicklistItem> PicklistItems => Set<PicklistItem>();
     public DbSet<StatusMapping> StatusMappings => Set<StatusMapping>();
+    public DbSet<DocumentTypeSerial> DocumentTypeSerials => Set<DocumentTypeSerial>();
     public DbSet<BaselineActivity> BaselineActivities => Set<BaselineActivity>();
     public DbSet<Folder> Folders => Set<Folder>();
     public DbSet<FolderFile> FolderFiles => Set<FolderFile>();

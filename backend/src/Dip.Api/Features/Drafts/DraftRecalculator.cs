@@ -16,15 +16,16 @@ internal static class DraftRecalculator
 {
     // Normalizes the padded fields, writes them back, and recomposes the number.
     // Returns the number the row had before the edit.
-    public static string ApplyNumber(DocumentDraft draft)
+    public static string ApplyNumber(DocumentDraft draft, SerialWidths widths)
     {
         var previous = draft.DocumentNumber;
+        var width = widths.For(draft.F04DocType);
         draft.F06Zone = DocumentNumbering.NormalizeZone(draft.F06Zone);
-        draft.F08CSequence = DocumentNumbering.NormalizeSequence(draft.F08CSequence);
+        draft.F08CSequence = DocumentNumbering.NormalizeSequence(draft.F08CSequence, width);
         draft.DocumentNumber = DocumentNumbering.Compose(
             draft.F01Project, draft.F02Originator, draft.F03Contract, draft.F04DocType,
             draft.F05Discipline, draft.F06Zone, draft.F07Building,
-            draft.F08ADrawingType, draft.F08BLevel, draft.F08CSequence);
+            draft.F08ADrawingType, draft.F08BLevel, draft.F08CSequence, width);
         return previous;
     }
 

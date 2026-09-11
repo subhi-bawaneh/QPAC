@@ -69,17 +69,14 @@ public static class ControlFindingsEngine
     }
 
     // Sheet: FILTER(SHD_History, (Document Length <> 3) * (In MIDP = FALSE) * (Latest = TRUE)).
-    // "Document Length <> 3" is the workbook's way of saying DocNoFinal isn't the
-    // "XXX" sentinel, so a row whose number could not be normalised is not a finding.
+    // "Document Length <> 3" is the workbook's way of saying the row has a usable
+    // number, so a row whose raw value could not be normalised is not a finding.
     private static IReadOnlyList<DeliveredButUnplanned> FindDelivered(
         IReadOnlyList<AconexRevision> revisions, StatusMappingLookup statuses) =>
         revisions
-            .Where(r => r.IsLatest
-                && !r.InMidp
-                && !string.IsNullOrEmpty(r.DocNoFinal)
-                && r.DocNoFinal != AconexRevision.InvalidDocNoSentinel)
+            .Where(r => r.IsLatest && !r.InMidp && !string.IsNullOrEmpty(r.DocNoFinal))
             .Select(r => new DeliveredButUnplanned(
-                r.DocNoFinal, r.Revision, r.Title, r.AconexStatus,
+                r.DocNoFinal!, r.Revision, r.Title, r.AconexStatus,
                 statuses.Find(r.AconexStatus), r.DateModified))
             .ToList();
 

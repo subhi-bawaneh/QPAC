@@ -7,6 +7,23 @@ namespace Dip.Infrastructure.Seeding;
 // The poll and the PicklistImporter upsert over these rows by (Field, Code); refactor-plan § 7.
 internal static class SeedPicklists
 {
+    // Sequence width per document type, for the eight types the sample MIDP actually
+    // uses; the widths are the modal width of each type's own numbers in column A
+    // (docs/excel-analysis.md). Every other type falls through to
+    // SerialWidths.DefaultWidth, so the default lives in code where it is findable
+    // rather than as 86 rows of guesswork.
+    public static IReadOnlyList<(string DocType, int SequenceWidth)> SerialWidths { get; } =
+    [
+        ("ANL", 3),
+        ("CAL", 3),
+        ("REP", 3),
+        ("BIM", 4),
+        ("MOD", 4),
+        ("SDW", 4),
+        ("TDP", 4),
+        ("VMU", 4),
+    ];
+
     public static IReadOnlyList<(PicklistField Field, string Code, string Description)> Items { get; } =
     [
         // Project (1)

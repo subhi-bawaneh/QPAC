@@ -1,4 +1,5 @@
 using Dip.Application.Abstractions;
+using Dip.Application.Documents;
 using Dip.Domain.Entities;
 using Dip.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -59,7 +60,10 @@ public sealed class UpdateDraftDocumentHandler
         draft.UpdatedAt = DateTime.UtcNow;
         draft.UpdatedBy = _currentUser.UserName ?? "system";
 
-        var previousNumber = DraftRecalculator.ApplyNumber(draft);
+        var widths = SerialWidths.Create(
+            await _db.DocumentTypeSerials.Where(s => !s.IsDeleted).ToListAsync(ct));
+
+        var previousNumber = DraftRecalculator.ApplyNumber(draft, widths);
         await DraftRecalculator.RefreshAsync(
             _db, draft.ProjectId, draft.FolderFileId, new[] { draft }, new[] { previousNumber }, ct);
 

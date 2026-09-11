@@ -11,6 +11,7 @@ public interface IDipDbContext
     DbSet<Discipline> Disciplines { get; }
     DbSet<PicklistItem> PicklistItems { get; }
     DbSet<StatusMapping> StatusMappings { get; }
+    DbSet<DocumentTypeSerial> DocumentTypeSerials { get; }
     DbSet<BaselineActivity> BaselineActivities { get; }
     DbSet<Folder> Folders { get; }
     DbSet<FolderFile> FolderFiles { get; }

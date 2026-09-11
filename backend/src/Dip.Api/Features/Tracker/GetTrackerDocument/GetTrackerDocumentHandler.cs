@@ -27,7 +27,8 @@ public sealed class GetTrackerDocumentHandler
         var number = snapshot.DocumentNumber.ToUpperInvariant();
         var revisions = await _db.AconexRevisions
             .AsNoTracking()
-            .Where(a => a.ProjectId == snapshot.ProjectId && a.DocNoFinal.ToUpper() == number)
+            .Where(a => a.ProjectId == snapshot.ProjectId
+                && a.DocNoFinal != null && a.DocNoFinal.ToUpper() == number)
             .OrderByDescending(a => a.DateModified)
             .ToListAsync(ct);
 

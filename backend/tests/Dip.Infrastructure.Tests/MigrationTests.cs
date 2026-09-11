@@ -76,6 +76,15 @@ public class MigrationTests : IClassFixture<PostgresFixture>
             m.ProjectId == project.Id && m.AconexStatus == "B - Approved with Comment");
         singularMapping.IsLegacy.Should().BeTrue();
 
+        // Sequence widths seeded for the eight document types the sample MIDP uses;
+        // every other type falls through to SerialWidths.DefaultWidth.
+        var serials = await db.DocumentTypeSerials
+            .Where(s => s.ProjectId == project.Id)
+            .ToListAsync();
+        serials.Should().HaveCount(SeedPicklists.SerialWidths.Count);
+        serials.Single(s => s.DocType == "SDW").SequenceWidth.Should().Be(4);
+        serials.Single(s => s.DocType == "CAL").SequenceWidth.Should().Be(3);
+
         // 5 roles, and SuperAdmin has all permissions.
         var superAdmin = await db.Roles.SingleAsync(r => r.Name == RoleDefinitions.SuperAdmin);
         var superAdminClaims = await db.RoleClaims

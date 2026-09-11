@@ -36,7 +36,7 @@ public class ControlFindingsEngineTests
         PlannedStart: plannedStart, PlannedFinish: null, ActualStart: null, ActualFinish: null);
 
     private static AconexRevision Revision(
-        string docNoFinal, bool isLatest = true, bool inMidp = false,
+        string? docNoFinal, bool isLatest = true, bool inMidp = false,
         string revision = "00", string status = "B - Approved with Comments") => new()
     {
         DocNoFinal = docNoFinal,
@@ -69,7 +69,7 @@ public class ControlFindingsEngineTests
                 Revision("DOC-A"),                                  // reported
                 Revision("DOC-B", inMidp: true),                    // planned, so fine
                 Revision("DOC-C", isLatest: false),                 // superseded revision
-                Revision(AconexRevision.InvalidDocNoSentinel),      // not a document number
+                Revision(null),                                     // not a document number
                 Revision(string.Empty),
             },
             Array.Empty<BaselineActivity>(), Statuses);

@@ -9,7 +9,7 @@ namespace Dip.Infrastructure.Importers;
 internal static class DocumentRowParser
 {
     public sealed record DocumentColumnMap(
-        int Title, int ExtractedFromModel, int ScopeArea, int AuthoringSoftware,
+        int DocumentNumber, int Title, int ExtractedFromModel, int ScopeArea, int AuthoringSoftware,
         int ExchangeFormat, int Scale, int DeliveryMilestone, int PackageName,
         int ActivityId, int ClassificationCode,
         int F01, int F02, int F03, int F04, int F05, int F06, int F07,
@@ -19,6 +19,11 @@ internal static class DocumentRowParser
         int Ex2Author, int Ex2Geometrical, int Ex2NonGeometrical,
         int Ex2Duration, int Ex2Predecessor, int Ex2ExchangeDate);
 
+    // NumberMismatch is set when the sheet's own DOCUMENT NUMBER disagrees with the
+    // number recomposed from the row's eight fields. The number wins (it is what
+    // Aconex holds); the disagreement is reported rather than silently resolved.
+    public sealed record NumberMismatch(string Field, string NumberSays, string FieldSays);
+
     public sealed record ParsedRow(
         string DocumentNumber, string Title,
         string? ExtractedFromModel, string? ScopeArea, string? AuthoringSoftware,
@@ -26,7 +31,8 @@ internal static class DocumentRowParser
         string? PackageName, string? ActivityId, string? ClassificationCode,
         string F01, string F02, string F03, string F04, string F05, string F06, string F07,
         string F08A, string F08B, string F08C, string CorporateDiscipline,
-        ExchangeRow? Exchange1, ExchangeRow? Exchange2);
+        ExchangeRow? Exchange1, ExchangeRow? Exchange2,
+        NumberMismatch? Mismatch = null);
 
     public sealed record ExchangeRow(
         string? Author, string? Geometrical, string? NonGeometrical,
@@ -50,6 +56,7 @@ internal static class DocumentRowParser
     {
         int Find(string label) => FindColumn(sheet, headerRow, label);
         return new DocumentColumnMap(
+            DocumentNumber: Find("DOCUMENT NUMBER"),
             Title: Find("DOCUMENT TITLE"),
             ExtractedFromModel: Find("EXTRACTED FROM MODEL"),
             ScopeArea: Find("SCOPE AREA"),
@@ -96,7 +103,7 @@ internal static class DocumentRowParser
         return -1;
     }
 
-    public static ParsedRow? ParseRow(IExcelSheet sheet, int r, DocumentColumnMap col)
+    public static ParsedRow? ParseRow(IExcelSheet sheet, int r, DocumentColumnMap col, SerialWidths widths)
     {
         var row = sheet.Row(r);
 
@@ -109,7 +116,7 @@ internal static class DocumentRowParser
         var f07 = ReadRequired(row, col.F07);
         var f08a = ReadRequired(row, col.F08A);
         var f08b = ReadRequired(row, col.F08B);
-        var f08c = DocumentNumbering.NormalizeSequence(ReadRequired(row, col.F08C));
+        var f08c = DocumentNumbering.NormalizeSequence(ReadRequired(row, col.F08C), widths.For(f04));
 
         // Required fields blank -> skip (template rows below the last populated row).
         if (string.IsNullOrEmpty(f01) || string.IsNullOrEmpty(f04) || string.IsNullOrEmpty(f05))
@@ -117,7 +124,23 @@ internal static class DocumentRowParser
             return null;
         }
 
-        var documentNumber = DocumentNumbering.Compose(f01, f02, f03, f04, f05, f06, f07, f08a, f08b, f08c);
+        // The sheet's own DOCUMENT NUMBER is the value of record: it is the form Aconex
+        // holds, and where it disagrees with the fields it is the fields that are wrong
+        // in the sample (a ZONE cell of 05 under a number that says 04, an SDW serial
+        // the sheet kept at three digits). The recompose is still done — as a
+        // cross-check that becomes a control finding, never as a rewrite.
+        // Both sides go through the same normalisation, so a field typed in lower case
+        // ("j3" for the drawing type, row 9711 of the sample) is not reported as a
+        // disagreement with the number that spells it in capitals.
+        var recomposed = DocumentNumbering.NormalizeNumber(DocumentNumbering.Compose(
+            f01, f02, f03, f04, f05, f06, f07, f08a, f08b, f08c, widths.For(f04)));
+        var written = DocumentNumbering.NormalizeNumber(ReadOptional(row, col.DocumentNumber));
+
+        var documentNumber = string.IsNullOrEmpty(written) ? recomposed : written;
+        var difference = string.IsNullOrEmpty(written)
+            ? null
+            : DocumentNumbering.FirstDifference(written, recomposed);
+        var mismatch = difference is { } d ? new NumberMismatch(d.Field, d.Left, d.Right) : null;
 
         return new ParsedRow(
             DocumentNumber: documentNumber,
@@ -137,7 +160,8 @@ internal static class DocumentRowParser
             Exchange1: ReadExchange(row, col.Ex1Author, col.Ex1Geometrical, col.Ex1NonGeometrical,
                 col.Ex1Duration, col.Ex1Predecessor, col.Ex1ExchangeDate),
             Exchange2: ReadExchange(row, col.Ex2Author, col.Ex2Geometrical, col.Ex2NonGeometrical,
-                col.Ex2Duration, col.Ex2Predecessor, col.Ex2ExchangeDate));
+                col.Ex2Duration, col.Ex2Predecessor, col.Ex2ExchangeDate),
+            Mismatch: mismatch);
     }
 
     private static ExchangeRow? ReadExchange(

@@ -56,17 +56,25 @@ public sealed class UpdateDocumentHandler : ICommandHandler<UpdateDocumentComman
         document.F03Contract = command.F03Contract;
         document.F04DocType = command.F04DocType;
         document.F05Discipline = command.F05Discipline;
+        // The width is data: an editor who retypes a field gets the number recomposed
+        // with the width configured for the type, not a hard-coded four.
+        var widths = SerialWidths.Create(
+            await _db.DocumentTypeSerials
+                .Where(s => s.ProjectId == document.ProjectId && !s.IsDeleted)
+                .ToListAsync(ct));
+        var sequenceWidth = widths.For(command.F04DocType);
+
         document.F06Zone = DocumentNumbering.NormalizeZone(command.F06Zone);
         document.F07Building = command.F07Building;
         document.F08ADrawingType = command.F08ADrawingType;
         document.F08BLevel = command.F08BLevel;
-        document.F08CSequence = DocumentNumbering.NormalizeSequence(command.F08CSequence);
+        document.F08CSequence = DocumentNumbering.NormalizeSequence(command.F08CSequence, sequenceWidth);
         document.CorporateDiscipline = command.CorporateDiscipline;
 
         document.DocumentNumber = DocumentNumbering.Compose(
             document.F01Project, document.F02Originator, document.F03Contract, document.F04DocType,
             document.F05Discipline, document.F06Zone, document.F07Building,
-            document.F08ADrawingType, document.F08BLevel, document.F08CSequence);
+            document.F08ADrawingType, document.F08BLevel, document.F08CSequence, sequenceWidth);
 
         if (!string.Equals(document.DocumentNumber, beforeNumber, StringComparison.OrdinalIgnoreCase))
         {

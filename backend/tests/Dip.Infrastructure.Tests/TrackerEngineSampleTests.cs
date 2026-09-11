@@ -69,6 +69,65 @@ public class TrackerEngineSampleTests
             failures.Count, sample.Count);
     }
 
+    // The 200-row sample is the PLAN.md § 9 target; this is the regression guard for a
+    // change to how the engine picks a document's current revision (RevisionOrder,
+    // finding 25). It runs the whole population — every document the Tracker sheet
+    // holds — so "no disagreements" means no disagreements anywhere, not in a sample.
+    //
+    // Scope: the columns derived from the Aconex history, which are the only ones the
+    // revision comparer can move. Planned Start and Planned Finish come from the
+    // Baseline sheet before any revision is looked at; the sample holds 54 such
+    // differences on 27 documents, which pre-date this change and are reported
+    // separately rather than silently asserted away.
+    [Fact]
+    public void EveryDocument_MatchesTheTrackerSheet_OnTheAconexDerivedColumns()
+    {
+        using var workbook = TrackerWorkbook.Open();
+
+        var sheetRows = TrackerWorkbook.ReadTrackerSheet(workbook);
+        var revisions = TrackerWorkbook.ReadAconexHistory(workbook);
+        var baseline = TrackerWorkbook.ReadBaseline(workbook);
+        var project = new Domain.Entities.Project { ScheduleMode = ScheduleMode.Baseline };
+
+        // The sheet repeats some numbers (see below), so the computed rows are keyed by
+        // number rather than assumed unique; every sheet row is still compared, which
+        // is what makes a repeat that disagrees with itself visible.
+        var computed = TrackerEngine
+            .Compute(
+                sheetRows.Select(TrackerWorkbook.ToDocument).ToList(),
+                revisions, baseline, TrackerWorkbook.SeededStatusMappings(), project)
+            .GroupBy(r => r.DocumentNumber, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
+
+        var repeated = sheetRows
+            .GroupBy(r => r.DocumentNumber, StringComparer.Ordinal)
+            .Count(g => g.Count() > 1);
+
+        var failures = new List<string>();
+        foreach (var expected in sheetRows)
+        {
+            Compare(expected, computed[expected.DocumentNumber], failures);
+        }
+
+        var schedule = failures
+            .Where(f => f.Contains(" Planned Start:", StringComparison.Ordinal)
+                     || f.Contains(" Planned Finish:", StringComparison.Ordinal))
+            .ToList();
+        var aconexDerived = failures.Except(schedule).ToList();
+
+        _output.WriteLine(
+            $"{sheetRows.Count} rows compared over {computed.Count} distinct numbers "
+            + $"({repeated} numbers appear more than once); "
+            + $"{aconexDerived.Count} disagreements on the Aconex-derived columns, "
+            + $"{schedule.Count} on Planned Start/Finish (pre-existing, out of scope)");
+        foreach (var failure in aconexDerived.Take(25)) _output.WriteLine(failure);
+
+        aconexDerived.Should().BeEmpty(
+            "the revision comparer must reproduce Tracker.xlsx for every row "
+            + "({0} differences across {1} documents)",
+            aconexDerived.Count, sheetRows.Count);
+    }
+
     private static void Compare(
         TrackerWorkbook.TrackerSheetRow expected, TrackerRow actual, List<string> failures)
     {

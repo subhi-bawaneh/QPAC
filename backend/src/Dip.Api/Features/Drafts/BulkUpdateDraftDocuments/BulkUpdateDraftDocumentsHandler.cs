@@ -1,4 +1,5 @@
 using Dip.Application.Abstractions;
+using Dip.Application.Documents;
 using Dip.Domain.Entities;
 using Dip.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -35,6 +36,9 @@ public sealed class BulkUpdateDraftDocumentsHandler
             DraftScope.EnsureCanEdit(_currentUser, draft.F05Discipline);
         }
 
+        var widths = SerialWidths.Create(
+            await _db.DocumentTypeSerials.Where(s => !s.IsDeleted).ToListAsync(ct));
+
         var now = DateTime.UtcNow;
         var by = _currentUser.UserName ?? "system";
         var previousNumbers = new Dictionary<Guid, string>(drafts.Count);
@@ -44,7 +48,7 @@ public sealed class BulkUpdateDraftDocumentsHandler
             Apply(draft, command.Fields);
             draft.UpdatedAt = now;
             draft.UpdatedBy = by;
-            previousNumbers[draft.Id] = DraftRecalculator.ApplyNumber(draft);
+            previousNumbers[draft.Id] = DraftRecalculator.ApplyNumber(draft, widths);
         }
 
         // Rows can span several uploaded files; each file's duplicate flags are its own.

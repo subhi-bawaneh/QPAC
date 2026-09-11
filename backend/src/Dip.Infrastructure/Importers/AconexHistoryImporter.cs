@@ -8,9 +8,8 @@ namespace Dip.Infrastructure.Importers;
 
 // Reads the Aconex History export (~25,246 rows) and materialises one
 // AconexRevision per row with:
-//   - DocNoFinal: whitespace-stripped, `-PDF` suffix removed. If the shape
-//     doesn't match the 8-segment MIDP pattern (last segment 7 chars),
-//     the value becomes "XXX" so downstream filters can exclude it.
+//   - DocNoFinal: whitespace-stripped, repeated hyphens collapsed, anything past the
+//     eighth segment dropped. Null when what is left is not an 8-segment number.
 //   - IsTerminated: a same-DocNo + same-Revision row at or after this row
 //     has ReviewStatus="Terminated" OR Status in ("Closed", "No Longer In Use").
 //   - IsLatest: this row has the max DateModified for its DocNoFinal.
@@ -24,9 +23,10 @@ public sealed class AconexHistoryImporter
     private readonly IExcelReader _reader;
 
     private const int InsertChunkSize = 2000;
-    public const string InvalidDocNoSentinel = AconexRevision.InvalidDocNoSentinel;
+    private const int SegmentCount = 8;
 
     private static readonly Regex WhitespaceRegex = new(@"\s+", RegexOptions.Compiled);
+    private static readonly Regex HyphenRunRegex = new("-{2,}", RegexOptions.Compiled);
     private static readonly HashSet<string> TerminalReviewStatuses = new(StringComparer.OrdinalIgnoreCase)
     {
         "Terminated",
@@ -174,8 +174,8 @@ public sealed class AconexHistoryImporter
         var latestFlags = new bool[parsed.Count];
         var byDocFinal = parsed
             .Select((p, i) => (Row: p, Index: i))
-            .Where(x => !string.Equals(x.Row.DocNoFinal, InvalidDocNoSentinel, StringComparison.Ordinal))
-            .GroupBy(x => x.Row.DocNoFinal);
+            .Where(x => !string.IsNullOrEmpty(x.Row.DocNoFinal))
+            .GroupBy(x => x.Row.DocNoFinal!);
         foreach (var group in byDocFinal)
         {
             var max = group.Max(x => x.Row.DateModified);
@@ -194,7 +194,7 @@ public sealed class AconexHistoryImporter
             var p = parsed[i];
             var isTerminated = terminatedFlags[i];
             var isLatest = latestFlags[i];
-            var inMidp = isTerminated || midpSet.Contains(p.DocNoFinal);
+            var inMidp = isTerminated || (p.DocNoFinal is not null && midpSet.Contains(p.DocNoFinal));
 
             pending.Add(new AconexRevision
             {
@@ -239,34 +239,41 @@ public sealed class AconexHistoryImporter
         return new ImportResult(parsed.Count, inserted, 0, skipped, warnings);
     }
 
-    // Normalise: strip ALL whitespace, remove trailing `-PDF` (case-insensitive),
-    // then check the document-number shape: 8 non-empty dash-separated segments.
-    // Anything else is "XXX" so filters can exclude it.
+    // Normalise the raw Aconex value onto a document number, or to null when it is
+    // not one. Three rules, in order, and no substitution of any kind:
     //
-    // The last segment is NOT length-checked. It usually reads "0ZZ0004" (7 chars),
+    //   1. strip ALL whitespace
+    //   2. collapse a run of hyphens to one — "…-2B30002--PDF"
+    //   3. keep the first eight segments and drop the rest — which covers every
+    //      export suffix the file carries ("-PDF", "-CAD", "-PDF-CAD", "-11",
+    //      "-PDF.") without a list of them to maintain
+    //
+    // What is left must be eight non-empty segments; anything else has no number.
+    // No segment is length-checked. The last one usually reads "0ZZ0004" (7 chars),
     // but 332 documents in the sample use 6 or 8 — e.g.
     // QF01012-NES-C04518-CAL-CIV-00-Z00000-000004 — and 174 of those carry real
     // Aconex history that a length rule would silently drop from every report.
     // Foreign-contract numbers (QF01012-BSB-C02310-...) are structurally valid and
     // normalise to themselves; they simply never match a MIDP document, which the
     // InMidp flag records. See docs/excel-analysis.md § 6.
-    public static string NormalizeDocNo(string raw)
+    public static string? NormalizeDocNo(string raw)
     {
-        if (string.IsNullOrWhiteSpace(raw)) return InvalidDocNoSentinel;
+        if (string.IsNullOrWhiteSpace(raw)) return null;
 
-        var stripped = WhitespaceRegex.Replace(raw, string.Empty);
-        if (stripped.EndsWith("-PDF", StringComparison.OrdinalIgnoreCase))
-        {
-            stripped = stripped[..^4];
-        }
+        var stripped = HyphenRunRegex.Replace(WhitespaceRegex.Replace(raw, string.Empty), "-");
 
         var segments = stripped.Split('-');
-        if (segments.Length != 8 || segments.Any(string.IsNullOrEmpty))
+        if (segments.Length > SegmentCount)
         {
-            return InvalidDocNoSentinel;
+            segments = segments[..SegmentCount];
         }
 
-        return stripped;
+        if (segments.Length != SegmentCount || segments.Any(string.IsNullOrEmpty))
+        {
+            return null;
+        }
+
+        return string.Join('-', segments);
     }
 
     private static bool IsTerminalStatus(string status, string? reviewStatus) =>
@@ -328,7 +335,7 @@ public sealed class AconexHistoryImporter
 
     private sealed record ParsedRevision(
         int RowNumber,
-        string FileType, string FileName, string AconexDocNo, string DocNoFinal,
+        string FileType, string FileName, string AconexDocNo, string? DocNoFinal,
         string Revision, string Title, string Status, string? ReviewStatus,
         DateTime DateModified,
         string? Type, string? Discipline, string? Area, string? Venue,

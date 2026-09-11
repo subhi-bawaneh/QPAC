@@ -5,17 +5,15 @@ namespace Dip.Domain.Entities;
 // One row from Aconex History. Uniqueness: (ProjectId, AconexDocNo, Revision, DateModified).
 public class AconexRevision : Entity
 {
-    // DocNoFinal when the raw Aconex value is not a document number at all.
-    // Rows carrying it are excluded from matching and from the control findings.
-    public const string InvalidDocNoSentinel = "XXX";
-
     public Guid ProjectId { get; set; }
     public Guid ImportBatchId { get; set; }
 
     public string FileType { get; set; } = string.Empty;               // "pdf", "dwg"
     public string FileName { get; set; } = string.Empty;
     public string AconexDocNo { get; set; } = string.Empty;            // raw with spaces & -PDF suffix
-    public string DocNoFinal { get; set; } = string.Empty;             // normalized (or "XXX" if not a MIDP shape)
+    // Null when the raw Aconex value is not a document number at all — the absence of
+    // a number, said plainly, rather than a sentinel every reader has to know about.
+    public string? DocNoFinal { get; set; }
     public string Revision { get; set; } = "00";
     public string Title { get; set; } = string.Empty;
     public string AconexStatus { get; set; } = string.Empty;

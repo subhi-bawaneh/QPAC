@@ -127,7 +127,9 @@ internal static class TrackerWorkbook
             rows.Add(new AconexRevision
             {
                 AconexDocNo = Text(row.Cell(colDocNo)) ?? string.Empty,
-                DocNoFinal = Text(row.Cell(colDocNoFinal)) ?? string.Empty,
+                // The sheet writes "XXX" where a row has no usable number; the domain
+                // says that with null (finding 26). Same input, said the domain's way.
+                DocNoFinal = NullIfSentinel(Text(row.Cell(colDocNoFinal))),
                 Revision = Text(row.Cell(colRevision)) ?? string.Empty,
                 Title = Text(row.Cell(colTitle)) ?? string.Empty,
                 AconexStatus = Text(row.Cell(colStatus)) ?? string.Empty,
@@ -222,6 +224,10 @@ internal static class TrackerWorkbook
         string.Equals(Text(cell), "TRUE", StringComparison.OrdinalIgnoreCase);
 
     // Blank cells and the "0" the export writes for a missing transmittal are null.
+    // "XXX" is the workbook's sentinel for "this raw value is not a document number".
+    private static string? NullIfSentinel(string? value) =>
+        string.IsNullOrEmpty(value) || value == "XXX" ? null : value;
+
     public static string? Text(IExcelCell cell)
     {
         var value = cell.GetStringOrNull()?.Trim();

@@ -48,6 +48,68 @@ public class TrackerEngineTests
         TransmittalIn = transmittal,
     };
 
+    // ---- which revision is "the" revision (RevisionOrder)
+
+    // The defect: a reviewer responds to revision 00 on 14 March after revision 01 was
+    // issued on 12 March. Ordering by DateModified alone reports the superseded
+    // revision as the document's state.
+    [Fact]
+    public void Latest_PrefersHigherRevision_WhenLowerRevisionHasLaterResponse()
+    {
+        var row = Compute(Doc(), new[]
+        {
+            Rev("01", new DateTime(2025, 3, 12, 9, 0, 0), "Under Review"),
+            Rev("00", new DateTime(2025, 3, 14, 17, 30, 0), "C - Rejected"),
+        });
+
+        row.Revision.Should().Be("01");
+        row.AconexStatus.Should().Be("Under Review");
+        row.DateModified.Should().Be(new DateTime(2025, 3, 12, 9, 0, 0));
+    }
+
+    [Fact]
+    public void Latest_BreaksRevisionTie_ByDate()
+    {
+        var row = Compute(Doc(), new[]
+        {
+            Rev("02", new DateTime(2025, 5, 1, 8, 0, 0), "Under Review"),
+            Rev("02", new DateTime(2025, 5, 9, 11, 45, 0), "A - Approved"),
+        });
+
+        row.Revision.Should().Be("02");
+        row.AconexStatus.Should().Be("A - Approved");
+        row.DateModified.Should().Be(new DateTime(2025, 5, 9, 11, 45, 0));
+    }
+
+    [Fact]
+    public void Latest_RanksNumericAboveNonNumeric()
+    {
+        var row = Compute(Doc(), new[]
+        {
+            Rev("P01", new DateTime(2025, 6, 20, 10, 0, 0), "A - Approved"),
+            Rev("00", new DateTime(2025, 6, 1, 10, 0, 0), "Under Review"),
+        });
+
+        row.Revision.Should().Be("00");
+        row.SubmissionsCount.Should().Be(1);
+    }
+
+    // Submission Date is the first time the winning revision was seen, so picking a
+    // different winner has to move it too.
+    [Fact]
+    public void SubmissionDate_FollowsTheWinningRevision()
+    {
+        var row = Compute(Doc(), new[]
+        {
+            Rev("01", new DateTime(2025, 3, 10, 9, 0, 0), "Under Review"),
+            Rev("01", new DateTime(2025, 3, 12, 9, 0, 0), "Under Review"),
+            Rev("00", new DateTime(2025, 3, 14, 17, 30, 0), "C - Rejected"),
+        });
+
+        row.SubmissionDate.Should().Be(new DateTime(2025, 3, 10, 9, 0, 0));
+        row.ActualStart.Should().Be(new DateTime(2025, 3, 10, 9, 0, 0));
+    }
+
     private static TrackerRow Compute(
         Document document, IEnumerable<AconexRevision> revisions,
         Project? project = null, IEnumerable<BaselineActivity>? baseline = null) =>
@@ -90,7 +152,23 @@ public class TrackerEngineTests
     }
 
     [Fact]
-    public void TiedDateModified_KeepsTheFirstRowInSourceOrder()
+    public void TiedRevisionAndDate_KeepsTheFirstRowInSourceOrder()
+    {
+        var tie = new DateTime(2026, 4, 26, 13, 4, 49, 41);
+
+        var row = Compute(Doc(), new[]
+        {
+            Rev("01", tie, "A - Approved", transmittal: "FIRST"),
+            Rev("01", tie, "C - Rejected", transmittal: "SECOND"),
+        });
+
+        row.Revision.Should().Be("01");
+        row.Transmittal.Should().Be("FIRST");
+    }
+
+    // Two revisions carrying the same timestamp is not a tie: the revision decides.
+    [Fact]
+    public void TiedDateAcrossRevisions_TakesTheHigherRevision()
     {
         var tie = new DateTime(2026, 4, 26, 13, 4, 49, 41);
 
@@ -100,8 +178,8 @@ public class TrackerEngineTests
             Rev("02", tie, "C - Rejected", transmittal: "SECOND"),
         });
 
-        row.Revision.Should().Be("01");
-        row.Transmittal.Should().Be("FIRST");
+        row.Revision.Should().Be("02");
+        row.Transmittal.Should().Be("SECOND");
     }
 
     [Fact]

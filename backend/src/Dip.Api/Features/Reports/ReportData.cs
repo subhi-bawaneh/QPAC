@@ -96,7 +96,8 @@ internal static class UnplannedRevisions
         var unplanned = new List<AconexRevision>();
         foreach (var revision in latest)
         {
-            revision.InMidp = revision.IsTerminated || planned.Contains(revision.DocNoFinal.ToUpperInvariant());
+            revision.InMidp = revision.IsTerminated
+                || (revision.DocNoFinal is not null && planned.Contains(revision.DocNoFinal.ToUpperInvariant()));
             if (!revision.InMidp) unplanned.Add(revision);
         }
         return unplanned;

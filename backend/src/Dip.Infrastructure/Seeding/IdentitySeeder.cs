@@ -43,6 +43,7 @@ public sealed class IdentitySeeder
         await SeedDisciplinesAsync(project.Id, ct);
         await SeedStatusMappingsAsync(project.Id, ct);
         await SeedPicklistsAsync(project.Id, ct);
+        await SeedSerialWidthsAsync(project.Id, ct);
         await SeedSuperAdminAsync();
 
         await _db.SaveChangesAsync(ct);
@@ -184,6 +185,29 @@ public sealed class IdentitySeeder
                 Code = code,
                 Description = description,
                 SortOrder = sortOrder[field],
+            });
+        }
+    }
+
+    // Widths for the document types the sample uses. Same rule as the picklists: a row
+    // already present — including one an operator soft-deleted — is left alone.
+    private async Task SeedSerialWidthsAsync(Guid projectId, CancellationToken ct)
+    {
+        var existingCodes = await _db.DocumentTypeSerials
+            .Where(s => s.ProjectId == projectId)
+            .Select(s => s.DocType)
+            .ToListAsync(ct);
+        var existing = existingCodes.Select(c => c.ToUpperInvariant()).ToHashSet();
+
+        foreach (var (docType, width) in SeedPicklists.SerialWidths)
+        {
+            if (existing.Contains(docType.ToUpperInvariant())) continue;
+
+            _db.DocumentTypeSerials.Add(new DocumentTypeSerial
+            {
+                ProjectId = projectId,
+                DocType = docType,
+                SequenceWidth = width,
             });
         }
     }

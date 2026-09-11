@@ -60,29 +60,29 @@ public class AconexHistoryImporterTests : IClassFixture<ImporterFixture>
         totalDb.Should().Be(result.RowsInserted);
 
         // Shapes that are not document numbers at all (report names, truncated values)
-        // normalise to XXX. Foreign-contract numbers keep their value — they simply
+        // have no number. Foreign-contract numbers keep their value — they simply
         // never match a MIDP document (docs/excel-analysis.md § 6).
-        var xxxCount = await db.AconexRevisions
-            .CountAsync(a => a.ProjectId == _fixture.QpacProjectId
-                && a.DocNoFinal == AconexHistoryImporter.InvalidDocNoSentinel);
-        xxxCount.Should().BeGreaterThan(0, "the sample contains rows whose Document No is not a document number");
+        var withoutNumber = await db.AconexRevisions
+            .CountAsync(a => a.ProjectId == _fixture.QpacProjectId && a.DocNoFinal == null);
+        withoutNumber.Should().BeGreaterThan(0, "the sample contains rows whose Document No is not a document number");
 
         var foreignContract = await db.AconexRevisions
             .CountAsync(a => a.ProjectId == _fixture.QpacProjectId
-                && a.DocNoFinal.StartsWith("QF01012-BSB-") && !a.InMidp);
+                && a.DocNoFinal != null && a.DocNoFinal.StartsWith("QF01012-BSB-") && !a.InMidp);
         foreignContract.Should().BeGreaterThan(0,
             "BSB rows are structurally valid numbers that are not in the MIDP");
 
-        // Spaces stripped, -PDF removed: no valid DocNoFinal should contain " " or end with "-PDF".
+        // Spaces stripped, export suffixes dropped: no DocNoFinal contains " " or ends with "-PDF".
         var withSpaces = await db.AconexRevisions
             .Where(a => a.ProjectId == _fixture.QpacProjectId
-                && a.DocNoFinal != AconexHistoryImporter.InvalidDocNoSentinel
+                && a.DocNoFinal != null
                 && a.DocNoFinal.Contains(" "))
             .CountAsync();
         withSpaces.Should().Be(0);
 
         var withPdf = await db.AconexRevisions
             .Where(a => a.ProjectId == _fixture.QpacProjectId
+                && a.DocNoFinal != null
                 && a.DocNoFinal.ToLower().EndsWith("-pdf"))
             .CountAsync();
         withPdf.Should().Be(0);
@@ -91,7 +91,7 @@ public class AconexHistoryImporterTests : IClassFixture<ImporterFixture>
         // (or a few tied on sub-second). Ties happen but should be very rare.
         var groupsWithMultipleLatest = await db.AconexRevisions
             .Where(a => a.ProjectId == _fixture.QpacProjectId
-                && a.DocNoFinal != AconexHistoryImporter.InvalidDocNoSentinel
+                && a.DocNoFinal != null
                 && a.IsLatest)
             .GroupBy(a => a.DocNoFinal)
             .Select(g => new { DocNo = g.Key, Count = g.Count() })

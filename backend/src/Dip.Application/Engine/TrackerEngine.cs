@@ -135,7 +135,7 @@ public static class TrackerEngine
         // Start onto submissions that were withdrawn.
         var byDocumentNumber = revisions
             .Where(r => !string.IsNullOrEmpty(r.DocNoFinal) && !r.IsTerminated)
-            .GroupBy(r => r.DocNoFinal, StringComparer.OrdinalIgnoreCase)
+            .GroupBy(r => r.DocNoFinal!, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => (IReadOnlyList<AconexRevision>)g.ToList(),
                 StringComparer.OrdinalIgnoreCase);
 
@@ -200,19 +200,32 @@ public static class TrackerEngine
             ActualFinish: status == UnifiedStatus.Approved ? dateModified : null);
     }
 
-    // MAXIFS over DateModified. Ties keep the first row in source order, matching
-    // the workbook's "take the first match" behaviour.
+    // The current state of a document is its highest revision, and within that
+    // revision the most recent event. Ordering by DateModified alone gets this wrong
+    // whenever a reviewer responds to an old revision after a new one was issued: the
+    // superseded revision then becomes the document's reported state.
+    //
+    // Ties on both keys keep the first row in source order, matching the workbook's
+    // "take the first match" behaviour.
     private static AconexRevision? Latest(IReadOnlyList<AconexRevision> revisions)
     {
         AconexRevision? latest = null;
         foreach (var revision in revisions)
         {
-            if (latest is null || revision.DateModified > latest.DateModified)
+            if (latest is null || IsLaterThan(revision, latest))
             {
                 latest = revision;
             }
         }
         return latest;
+    }
+
+    private static bool IsLaterThan(AconexRevision candidate, AconexRevision incumbent)
+    {
+        var byRevision = RevisionOrder.Compare(candidate.Revision, incumbent.Revision);
+        return byRevision != 0
+            ? byRevision > 0
+            : candidate.DateModified > incumbent.DateModified;
     }
 
     // Revision "00" is the first submission, so the count is the number + 1.

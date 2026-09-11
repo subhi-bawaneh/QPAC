@@ -56,17 +56,21 @@ public sealed class TidpImporter
         var headerRow = DocumentRowParser.FindDocumentTableHeader(sheet);
         var columns = DocumentRowParser.MapDocumentColumns(sheet, headerRow);
 
+        // Sequence widths are data (DocumentTypeSerials), read once per import.
+        var widths = SerialWidths.Create(
+            await _db.DocumentTypeSerials.Where(s => s.ProjectId == projectId && !s.IsDeleted).ToListAsync(ct));
+
         return target == DataTarget.Draft
-            ? await ImportDraftAsync(sheet, headerRow, columns, projectId, discipline, header,
+            ? await ImportDraftAsync(sheet, headerRow, columns, widths, projectId, discipline, header,
                 folderFileId, importBatchId, importedBy, ct)
-            : await ImportLiveAsync(sheet, headerRow, columns, projectId, discipline, header,
+            : await ImportLiveAsync(sheet, headerRow, columns, widths, projectId, discipline, header,
                 folderFileId, importedBy, ct);
     }
 
     // ---------------------------------------------------------------- Live
 
     private async Task<ImportResult> ImportLiveAsync(
-        IExcelSheet sheet, int headerRow, ColMap columns,
+        IExcelSheet sheet, int headerRow, ColMap columns, SerialWidths widths,
         Guid projectId, Discipline discipline, TidpHeader header,
         Guid? folderFileId, string importedBy, CancellationToken ct)
     {
@@ -86,10 +90,18 @@ public sealed class TidpImporter
 
         for (var r = headerRow + 1; r <= sheet.RowCount; r++)
         {
-            var parsed = DocumentRowParser.ParseRow(sheet, r, columns);
+            var parsed = DocumentRowParser.ParseRow(sheet, r, columns, widths);
             if (parsed is null) continue;
 
             read++;
+
+            if (parsed.Mismatch is { } mismatch)
+            {
+                warnings.Add(
+                    $"Row {r}: document number does not match its fields: "
+                    + $"{mismatch.Field} is {mismatch.FieldSays}, number says {mismatch.NumberSays}");
+            }
+
 
             if (existingByNumber.TryGetValue(parsed.DocumentNumber, out var existingRef))
             {
@@ -194,7 +206,7 @@ public sealed class TidpImporter
     // --------------------------------------------------------------- Draft
 
     private async Task<ImportResult> ImportDraftAsync(
-        IExcelSheet sheet, int headerRow, ColMap columns,
+        IExcelSheet sheet, int headerRow, ColMap columns, SerialWidths widths,
         Guid projectId, Discipline discipline, TidpHeader header,
         Guid? folderFileId, Guid? importBatchId, string importedBy, CancellationToken ct)
     {
@@ -247,10 +259,18 @@ public sealed class TidpImporter
 
         for (var r = headerRow + 1; r <= sheet.RowCount; r++)
         {
-            var parsed = DocumentRowParser.ParseRow(sheet, r, columns);
+            var parsed = DocumentRowParser.ParseRow(sheet, r, columns, widths);
             if (parsed is null) continue;
 
             read++;
+
+            if (parsed.Mismatch is { } mismatch)
+            {
+                warnings.Add(
+                    $"Row {r}: document number does not match its fields: "
+                    + $"{mismatch.Field} is {mismatch.FieldSays}, number says {mismatch.NumberSays}");
+            }
+
 
             var isDuplicate = !seen.Add(parsed.DocumentNumber);
             if (isDuplicate)

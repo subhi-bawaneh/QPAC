@@ -25,10 +25,10 @@ public class UpdateDocumentTests
 
         var admin = await TestHelpers.AuthedAdminAsync(_factory);
         var world = await ImportLiveAsync(admin);
-        var row = await SequenceFourWithFreeFiveAsync(world.ProjectId);
+        var (row, nextSequence) = await RenumberableRowAsync(world.ProjectId);
 
         var payload = Payload(row);
-        payload["f08CSequence"] = "0005";
+        payload["f08CSequence"] = nextSequence;
         payload["title"] = "EDITED LIVE TITLE";
 
         var response = await admin.PutAsJsonAsync($"/api/documents/{row.Id}", payload);
@@ -36,9 +36,9 @@ public class UpdateDocumentTests
             "update failed: {0}", await response.Content.ReadAsStringAsync());
 
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
-        body.GetProperty("f08CSequence").GetString().Should().Be("0005", "leading zeros survive");
+        body.GetProperty("f08CSequence").GetString().Should().Be(nextSequence, "leading zeros survive");
         body.GetProperty("documentNumber").GetString().Should()
-            .Be(row.DocumentNumber[..^4] + "0005");
+            .Be(row.DocumentNumber[..^nextSequence.Length] + nextSequence);
 
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DipDbContext>();
@@ -127,22 +127,36 @@ public class UpdateDocumentTests
     }
 
     // Renumbering must land on a free number, so the row is chosen accordingly.
-    private async Task<DocumentRow> SequenceFourWithFreeFiveAsync(Guid projectId)
+    //
+    // The serial width is per document type now (CAL is three digits, SDW four), so
+    // the next serial is derived from the row rather than assumed to be "0005".
+    private async Task<(DocumentRow Row, string NextSequence)> RenumberableRowAsync(Guid projectId)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DipDbContext>();
-        var taken = (await db.Documents.AsNoTracking()
-                .Where(x => x.ProjectId == projectId)
-                .Select(x => x.DocumentNumber)
-                .ToListAsync())
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-        var candidates = await db.Documents.AsNoTracking()
-            .Where(x => x.ProjectId == projectId && x.F08CSequence == "0004")
+        var documents = await db.Documents.AsNoTracking()
+            .Where(x => x.ProjectId == projectId)
             .OrderBy(x => x.DocumentNumber)
             .ToListAsync();
+        var taken = documents
+            .Select(x => x.DocumentNumber)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        return Map(candidates.First(x => !taken.Contains(x.DocumentNumber[..^4] + "0005")));
+        foreach (var document in documents)
+        {
+            var sequence = document.F08CSequence;
+            if (!int.TryParse(sequence, out var value)) continue;
+
+            var next = (value + 1).ToString().PadLeft(sequence.Length, '0');
+            if (next.Length != sequence.Length) continue;   // rolled over a digit
+
+            if (!taken.Contains(document.DocumentNumber[..^sequence.Length] + next))
+            {
+                return (Map(document), next);
+            }
+        }
+
+        throw new InvalidOperationException("No document in the sample can be renumbered into a free slot");
     }
 
     private async Task<DocumentRow> FirstDocumentAsync(Guid projectId, string sequence)

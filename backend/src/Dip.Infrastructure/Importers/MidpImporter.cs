@@ -48,10 +48,14 @@ public sealed class MidpImporter
         var headerRow = DocumentRowParser.FindDocumentTableHeader(sheet);
         var columns = DocumentRowParser.MapDocumentColumns(sheet, headerRow);
 
+        // Sequence widths are data (DocumentTypeSerials), read once per import.
+        var widths = SerialWidths.Create(
+            await _db.DocumentTypeSerials.Where(s => s.ProjectId == projectId && !s.IsDeleted).ToListAsync(ct));
+
         return target == DataTarget.Draft
-            ? await ImportDraftAsync(sheet, headerRow, columns, projectId,
+            ? await ImportDraftAsync(sheet, headerRow, columns, widths, projectId,
                 folderFileId, importBatchId, importedBy, ct)
-            : await ImportLiveAsync(sheet, headerRow, columns, projectId,
+            : await ImportLiveAsync(sheet, headerRow, columns, widths, projectId,
                 folderFileId, importedBy, ct);
     }
 
@@ -59,6 +63,7 @@ public sealed class MidpImporter
 
     private async Task<ImportResult> ImportLiveAsync(
         IExcelSheet sheet, int headerRow, DocumentRowParser.DocumentColumnMap columns,
+        SerialWidths widths,
         Guid projectId, Guid? folderFileId, string importedBy, CancellationToken ct)
     {
         // Preload existing Disciplines and Documents in one query each.
@@ -88,10 +93,18 @@ public sealed class MidpImporter
 
         for (var r = headerRow + 1; r <= sheet.RowCount; r++)
         {
-            var parsed = DocumentRowParser.ParseRow(sheet, r, columns);
+            var parsed = DocumentRowParser.ParseRow(sheet, r, columns, widths);
             if (parsed is null) continue;
 
             read++;
+
+            if (parsed.Mismatch is { } mismatch)
+            {
+                warnings.Add(
+                    $"Row {r}: document number does not match its fields: "
+                    + $"{mismatch.Field} is {mismatch.FieldSays}, number says {mismatch.NumberSays}");
+            }
+
 
             if (string.IsNullOrEmpty(parsed.CorporateDiscipline))
             {
@@ -247,6 +260,7 @@ public sealed class MidpImporter
 
     private async Task<ImportResult> ImportDraftAsync(
         IExcelSheet sheet, int headerRow, DocumentRowParser.DocumentColumnMap columns,
+        SerialWidths widths,
         Guid projectId, Guid? folderFileId, Guid? importBatchId, string importedBy, CancellationToken ct)
     {
         if (folderFileId is null || importBatchId is null)
@@ -298,10 +312,18 @@ public sealed class MidpImporter
 
         for (var r = headerRow + 1; r <= sheet.RowCount; r++)
         {
-            var parsed = DocumentRowParser.ParseRow(sheet, r, columns);
+            var parsed = DocumentRowParser.ParseRow(sheet, r, columns, widths);
             if (parsed is null) continue;
 
             read++;
+
+            if (parsed.Mismatch is { } mismatch)
+            {
+                warnings.Add(
+                    $"Row {r}: document number does not match its fields: "
+                    + $"{mismatch.Field} is {mismatch.FieldSays}, number says {mismatch.NumberSays}");
+            }
+
 
             if (string.IsNullOrEmpty(parsed.CorporateDiscipline))
             {
