@@ -119,11 +119,12 @@ public class UpdateDocumentTests
 
     private async Task<World> ImportLiveAsync(HttpClient admin)
     {
-        var projectId = await TestHelpers.NewProjectAsync(_factory, "Update document test");
-        var folderId = await TestHelpers.CreateFolderAsync(
-            admin, $"UpdateDoc-{Guid.NewGuid():N}", projectId: projectId);
-        await TestHelpers.ImportedAsync(admin, folderId, "TIDP-STL.xlsx");
-        return new World(projectId, folderId);
+        // The sample workbook's rows carry PROJECT = QF01012, and the importer rejects a
+        // row whose project code is not the project's own, so the seeded QPAC project is
+        // the only one it can be imported into.
+        var projectId = TestHelpers.QpacProjectId;
+        var (tidpFileId, _) = await TestHelpers.ImportTidpAsync(_factory, projectId, "TIDP-STL.xlsx");
+        return new World(projectId, tidpFileId);
     }
 
     // Renumbering must land on a free number, so the row is chosen accordingly.

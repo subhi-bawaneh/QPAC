@@ -7,7 +7,6 @@ namespace Dip.Api.Features.Tracker;
 // computed ones (Tracker.xlsx!Tracker, docs/excel-analysis.md § 4.1).
 public sealed record TrackerRowDto(
     Guid DocumentId,
-    DataTarget Layer,
     string DocumentNumber,
     string Type,
     string Discipline,
@@ -35,7 +34,6 @@ public sealed record TrackerRowDto(
     // so the grid never joins back to the source tables.
     public static TrackerRowDto From(DocumentSnapshot snapshot) => new(
         snapshot.DocumentId,
-        snapshot.Layer,
         snapshot.DocumentNumber,
         snapshot.Type,
         snapshot.Discipline,

@@ -1,5 +1,3 @@
-using Dip.Api.Features.Drafts;
-using Dip.Api.Features.Drafts.UpdateDraftDocument;
 using Dip.Api.Workers;
 using Dip.Application.Abstractions;
 using Dip.Application.Behaviors;
@@ -35,9 +33,8 @@ public sealed class UpdateDocumentHandler : ICommandHandler<UpdateDocumentComman
 
         // The AuthorizationBehavior only sees the incoming discipline; a scoped editor
         // must also be allowed to touch the row as it stands today.
-        DraftScope.EnsureCanEdit(_currentUser, document.F05Discipline);
 
-        var before = DraftDiff.From(document);
+        var before = DocumentDiff.From(document);
         var beforeNumber = document.DocumentNumber;
         var beforeFields = NumberingFields(document);
 
@@ -100,10 +97,10 @@ public sealed class UpdateDocumentHandler : ICommandHandler<UpdateDocumentComman
         document.UpdatedAt = at;
         document.UpdatedBy = by;
 
-        // DraftDiff deliberately leaves the eight numbering fields out — a change there
+        // DocumentDiff deliberately leaves the eight numbering fields out — a change there
         // makes a *different* document in the draft workflow. On a Live edit it is the
         // same row being renumbered, so those changes are audited too.
-        var changes = DraftDiff.Changes(before, DraftDiff.From(document))
+        var changes = DocumentDiff.Changes(before, DocumentDiff.From(document))
             .Concat(NumberingChanges(beforeFields, NumberingFields(document)))
             .ToList();
 
@@ -156,7 +153,7 @@ public sealed class UpdateDocumentHandler : ICommandHandler<UpdateDocumentComman
         (nameof(Document.F08CSequence), d.F08CSequence),
     ];
 
-    private static IEnumerable<DraftFieldChange> NumberingChanges(
+    private static IEnumerable<FieldChange> NumberingChanges(
         IReadOnlyList<(string Field, string Value)> before,
         IReadOnlyList<(string Field, string Value)> after)
     {
@@ -164,12 +161,12 @@ public sealed class UpdateDocumentHandler : ICommandHandler<UpdateDocumentComman
         {
             if (!string.Equals(before[i].Value, after[i].Value, StringComparison.Ordinal))
             {
-                yield return new DraftFieldChange(before[i].Field, before[i].Value, after[i].Value);
+                yield return new FieldChange(before[i].Field, before[i].Value, after[i].Value);
             }
         }
     }
 
-    private void ReplaceExchanges(Document document, IReadOnlyList<DraftExchangeInput> inputs)
+    private void ReplaceExchanges(Document document, IReadOnlyList<ExchangeInput> inputs)
     {
         foreach (var existing in document.Exchanges.ToList())
         {

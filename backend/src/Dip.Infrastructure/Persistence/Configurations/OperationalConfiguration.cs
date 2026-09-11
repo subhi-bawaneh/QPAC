@@ -10,10 +10,9 @@ internal sealed class DocumentSnapshotConfiguration : IEntityTypeConfiguration<D
     public void Configure(EntityTypeBuilder<DocumentSnapshot> b)
     {
         b.ToTable("DocumentSnapshots");
-        // Keyed by the source row id (Document.Id or DocumentDraft.Id). No FK:
-        // the row can live in either layer's table (decision D11).
+        // Keyed by Document.Id, with the foreign key back now that a snapshot can
+        // only come from one table: deleting a document deletes its tracker row.
         b.HasKey(x => x.DocumentId);
-        b.Property(x => x.Layer).HasConversion<string>().HasMaxLength(10);
         b.Property(x => x.DocumentNumber).HasMaxLength(200).IsRequired();
         b.Property(x => x.Title).HasMaxLength(500).IsRequired();
         b.Property(x => x.Type).HasMaxLength(20).IsRequired();
@@ -36,11 +35,14 @@ internal sealed class DocumentSnapshotConfiguration : IEntityTypeConfiguration<D
         b.Property(x => x.ActualFinish).HasColumnType("timestamp without time zone");
         b.Property(x => x.SubmissionDate).HasColumnType("timestamp without time zone");
         b.Property(x => x.DateModified).HasColumnType("timestamp without time zone");
-        b.HasIndex(x => new { x.ProjectId, x.Layer });
         b.HasIndex(x => new { x.ProjectId, x.DocumentNumber });
         b.HasIndex(x => new { x.ProjectId, x.Discipline });
         b.HasIndex(x => new { x.ProjectId, x.Status });
-        b.HasIndex(x => x.FolderFileId);
+        b.HasIndex(x => x.TidpFileId);
+        b.HasOne(x => x.Document)
+            .WithOne()
+            .HasForeignKey<DocumentSnapshot>(x => x.DocumentId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }
 
@@ -51,12 +53,13 @@ internal sealed class ImportBatchConfiguration : IEntityTypeConfiguration<Import
         b.ToTable("ImportBatches");
         b.HasKey(x => x.Id);
         b.Property(x => x.Kind).HasConversion<string>().HasMaxLength(20);
-        b.Property(x => x.Target).HasConversion<string>().HasMaxLength(10);
+        b.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
         b.Property(x => x.FileName).HasMaxLength(500).IsRequired();
-        b.Property(x => x.ImportedBy).HasMaxLength(200);
+        b.Property(x => x.UploadedBy).HasMaxLength(200);
         b.Property(x => x.ImportedAt).HasColumnType("timestamp without time zone");
         b.Property(x => x.Log).HasColumnType("jsonb");
         b.HasIndex(x => new { x.ProjectId, x.ImportedAt });
+        b.HasOne(x => x.TidpFile).WithMany().HasForeignKey(x => x.TidpFileId).OnDelete(DeleteBehavior.SetNull);
     }
 }
 
@@ -69,8 +72,10 @@ internal sealed class AuditLogConfiguration : IEntityTypeConfiguration<AuditLog>
         b.Property(x => x.EntityName).HasMaxLength(100).IsRequired();
         b.Property(x => x.Action).HasMaxLength(50).IsRequired();
         b.Property(x => x.Field).HasMaxLength(100);
-        b.Property(x => x.OldValue).HasMaxLength(2000);
-        b.Property(x => x.NewValue).HasMaxLength(2000);
+        // Unbounded: a Replaced or Deleted entry carries the whole outgoing row as
+        // JSON, which is longer than any field-level diff.
+        b.Property(x => x.OldValue).HasColumnType("text");
+        b.Property(x => x.NewValue).HasColumnType("text");
         b.Property(x => x.UserId).HasMaxLength(100);
         b.Property(x => x.At).HasColumnType("timestamp without time zone");
         b.HasIndex(x => new { x.ProjectId, x.EntityName, x.EntityId });

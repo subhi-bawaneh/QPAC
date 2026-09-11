@@ -33,7 +33,11 @@ internal static class ReportDataLoader
         var project = await db.Projects.AsNoTracking().FirstOrDefaultAsync(p => p.Id == projectId, ct)
             ?? throw new KeyNotFoundException($"Project {projectId} not found");
 
-        var effective = await EffectiveDocumentLoader.LoadAsync(db, projectId, ct);
+        var effective = await db.Documents
+            .AsNoTracking()
+            .Include(d => d.Exchanges)
+            .Where(d => d.ProjectId == projectId)
+            .ToListAsync(ct);
 
         var snapshots = await db.DocumentSnapshots
             .AsNoTracking()
@@ -47,16 +51,16 @@ internal static class ReportDataLoader
 
         foreach (var row in effective)
         {
-            documents.Add(row.Document);
-            if (snapshotsByRow.TryGetValue(row.RowId, out var snapshot))
+            documents.Add(row);
+            if (snapshotsByRow.TryGetValue(row.Id, out var snapshot))
             {
-                rows.Add(TrackerRow.FromSnapshot(snapshot, row.Document.DocumentNumber));
+                rows.Add(TrackerRow.FromSnapshot(snapshot, row.DocumentNumber));
             }
             else
             {
                 missing++;
                 rows.Add(new TrackerRow(
-                    row.RowId, row.Document.DocumentNumber,
+                    row.Id, row.DocumentNumber,
                     null, null, null, null, null, null, null, null, null, null, null));
             }
         }

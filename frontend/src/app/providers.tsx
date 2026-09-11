@@ -4,7 +4,6 @@ import type { ReactNode } from 'react'
 import { AuthProvider } from '@/shared/auth/AuthProvider'
 import { ThemeProvider } from '@/shared/theme/ThemeProvider'
 import { ToastProvider } from '@/shared/ui/toast'
-import { RealtimeGate } from './RealtimeGate'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -25,7 +24,7 @@ export function Providers({ children }: { children: ReactNode }) {
         <BrowserRouter>
           <AuthProvider>
             <ToastProvider>
-              <RealtimeGate>{children}</RealtimeGate>
+              {children}
             </ToastProvider>
           </AuthProvider>
         </BrowserRouter>

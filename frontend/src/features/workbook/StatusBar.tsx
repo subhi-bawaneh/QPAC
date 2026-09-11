@@ -1,10 +1,9 @@
 import { formatDate, formatNumber } from '@/shared/lib/utils'
-import type { DataTarget } from '@/shared/api/types'
 
-export function StatusBar({ totalRows, loadedRows, layer, lastImportedAt, loadingMore }: {
+export function StatusBar({ totalRows, loadedRows, discipline, lastImportedAt, loadingMore }: {
   totalRows: number
   loadedRows: number
-  layer: DataTarget
+  discipline: string
   lastImportedAt: string | null
   loadingMore: boolean
 }) {
@@ -15,7 +14,7 @@ export function StatusBar({ totalRows, loadedRows, layer, lastImportedAt, loadin
         Loaded: {formatNumber(loadedRows)}
         {loadingMore ? ' — loading…' : ''}
       </span>
-      <span>Layer: {layer === 'Draft' ? 'DB1 Draft' : 'DB2 Live'}</span>
+      <span>Discipline: {discipline || '—'}</span>
       {lastImportedAt ? <span>Imported {formatDate(lastImportedAt)}</span> : null}
     </div>
   )

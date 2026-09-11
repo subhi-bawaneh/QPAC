@@ -7,9 +7,9 @@ namespace Dip.Domain.Tests;
 public class EnumsTests
 {
     [Fact]
-    public void DataTarget_HasLiveAndDraft()
+    public void TidpFileStatus_CoversTheUploadLifecycle()
     {
-        Enum.GetNames<DataTarget>().Should().Contain(new[] { "Live", "Draft" });
+        Enum.GetNames<TidpFileStatus>().Should().Contain(new[] { "Importing", "Imported", "Failed" });
     }
 
     [Fact]
@@ -18,9 +18,11 @@ public class EnumsTests
         Enum.GetValues<UnifiedStatus>().Length.Should().Be(4);
     }
 
+    // The MIDP workbook is no longer a source: the TIDPs cover it (38 of its
+    // documents appear in no TIDP, which the S2 gate reports).
     [Fact]
     public void ImportKind_CoversAllSources()
     {
-        Enum.GetNames<ImportKind>().Should().Contain(new[] { "Tidp", "Midp", "AconexHistory", "Baseline", "Picklists", "Lists" });
+        Enum.GetNames<ImportKind>().Should().Contain(new[] { "Tidp", "AconexHistory", "Baseline", "Picklists", "Lists" });
     }
 }

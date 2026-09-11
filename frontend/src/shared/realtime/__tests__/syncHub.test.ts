@@ -8,8 +8,8 @@ describe('createSyncConnection', () => {
 
     expect(connection.baseUrl).toBe(`${apiBaseUrl}/hubs/sync`)
     expect(syncEventNames).toEqual([
-      'syncStarted', 'folderSynced', 'syncFinished', 'fileQueued',
-      'fileImportStarted', 'fileImported', 'fileFailed', 'recalculationFinished',
+      'importQueued', 'importStarted', 'importFinished', 'importFailed',
+      'recalculationFinished',
     ])
   })
 })

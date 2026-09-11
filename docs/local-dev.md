@@ -28,14 +28,12 @@ Everything lands in `backend/src/Dip.Api/App_Data/`, which is git-ignored:
 The startup log prints the sign-in credentials:
 
 ```
-[INF] Local development mode — SQLite at .../App_Data/dip-local.db. Drive mirror: .../Qpac_1
 [INF] Sign in as admin@dip.local / Dev3f9a21c4A1 (kept in App_Data/dev-secrets.json)
 ```
 
 If you already set `Seed:AdminEmail` / `Seed:AdminPassword` yourself (user-secrets or env
 vars), those are used and the password is not echoed into the log.
 
-The `Qpac_1/` folder at the top of the repository stands in for Google Drive: the sync
 worker mirrors it, the import worker reads every workbook in it, and the reports are
 computed from the result. No Google API key is involved. Give it a minute after startup —
 `/health/detail` reports what the workers are doing.

@@ -1,32 +1,41 @@
 using Dip.Domain.Common;
+using Dip.Domain.Enums;
 
 namespace Dip.Domain.Entities;
 
-// A TIDP file — one per discipline. Corresponds to a row in the Folders/Files tree.
-public class Tidp : AuditableEntity
+// One uploaded TIDP workbook — the unit of replacement and deletion. A document
+// belongs to exactly one of these, so replacing a file touches only its own rows
+// and never a number another file owns (stage 3, first-file-wins).
+public class TidpFile : AuditableEntity
 {
     public Guid ProjectId { get; set; }
     public Guid DisciplineId { get; set; }
-    public Guid? FolderFileId { get; set; }
     public string DocumentReference { get; set; } = string.Empty;      // "QF01012-NES-C04518-TDP-XX..."
     public string RevisionNumber { get; set; } = "00";
     public DateTime? DateCreated { get; set; }
     public DateTime? DateLastUpdated { get; set; }
-    public string? SourceFileName { get; set; }
+
+    // Upload metadata. The file bytes are never stored: they are parsed and discarded.
+    public string FileName { get; set; } = string.Empty;
+    public int RowsRead { get; set; }
+    public int RowsImported { get; set; }
+    public int RowsSkipped { get; set; }
+    public string UploadedBy { get; set; } = string.Empty;
+    public DateTime UploadedAt { get; set; }
+    public TidpFileStatus Status { get; set; } = TidpFileStatus.Importing;
+    public string? Error { get; set; }
 
     public Project? Project { get; set; }
     public Discipline? Discipline { get; set; }
-    public FolderFile? FolderFile { get; set; }
     public ICollection<Document> Documents { get; set; } = new List<Document>();
 }
 
-// One planned document (row in TIDP_Sheet / MIDP).
+// One planned document (row in a TIDP sheet).
 public class Document : AuditableEntity
 {
     public Guid ProjectId { get; set; }
-    public Guid TidpId { get; set; }
+    public Guid TidpFileId { get; set; }
     public Guid DisciplineId { get; set; }
-    public Guid? FolderFileId { get; set; }
 
     public string DocumentNumber { get; set; } = string.Empty;         // UNIQUE (ProjectId, DocumentNumber)
     public string Title { get; set; } = string.Empty;
@@ -41,6 +50,8 @@ public class Document : AuditableEntity
     public string? ClassificationCode { get; set; }
 
     // 8-field numbering scheme; strings so leading zeros survive (Zone "00", Sequence "0004").
+    // The number itself is the sheet's own DOCUMENT NUMBER, normalised; these fields are
+    // what the editor recomposes from and what the off-list findings check.
     public string F01Project { get; set; } = string.Empty;
     public string F02Originator { get; set; } = string.Empty;
     public string F03Contract { get; set; } = string.Empty;
@@ -57,10 +68,15 @@ public class Document : AuditableEntity
     // Weight used by SPI (§ 7). Default = Exchange 01 duration (or 1 if missing).
     public decimal BudgetWeight { get; set; } = 1m;
 
+    // Set the moment a person changes any field. A replace destroys these rows, so the
+    // count of them is what the confirmation dialog shows before it does (stage 3).
+    public bool IsEdited { get; set; }
+    public string? EditedBy { get; set; }
+    public DateTime? EditedAt { get; set; }
+
     public Project? Project { get; set; }
-    public Tidp? Tidp { get; set; }
+    public TidpFile? TidpFile { get; set; }
     public Discipline? Discipline { get; set; }
-    public FolderFile? FolderFile { get; set; }
     public ICollection<DataExchange> Exchanges { get; set; } = new List<DataExchange>();
 }
 

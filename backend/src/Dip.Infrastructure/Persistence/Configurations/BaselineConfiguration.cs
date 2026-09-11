@@ -22,6 +22,8 @@ internal sealed class BaselineActivityConfiguration : IEntityTypeConfiguration<B
         b.Property(x => x.Type).HasConversion<string>().HasMaxLength(20);
         b.Property(x => x.Start).HasColumnType("timestamp without time zone");
         b.Property(x => x.Finish).HasColumnType("timestamp without time zone");
+        b.Property(x => x.EditedBy).HasMaxLength(200);
+        b.Property(x => x.EditedAt).HasColumnType("timestamp without time zone");
         b.HasIndex(x => new { x.ProjectId, x.ActivityCode }).IsUnique();
         b.HasIndex(x => new { x.ProjectId, x.Package, x.Type });
         b.HasOne(x => x.Project).WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);

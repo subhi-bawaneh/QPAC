@@ -1,6 +1,5 @@
 using FluentValidation;
 
-using Dip.Api.Features.Drafts.UpdateDraftDocument;
 
 namespace Dip.Api.Features.Documents.UpdateDocument;
 

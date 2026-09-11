@@ -7,21 +7,18 @@ import type { ImportBatchSummary } from '@/shared/api/types'
 
 // Server -> client events of Dip.Api/Hubs/ISyncNotifier.
 export interface SyncEvents {
-  syncStarted: { projectId: string; at: string }
-  folderSynced: { projectId: string; folderId: string; path: string; files: number }
-  syncFinished: { projectId: string; foldersSynced: number; filesQueued: number; error: string | null }
-  fileQueued: { projectId: string; fileId: string; folderId: string }
-  fileImportStarted: { projectId: string; fileId: string }
-  fileImported: { projectId: string; fileId: string; folderId: string; batch: ImportBatchSummary }
-  fileFailed: { projectId: string; fileId: string; folderId: string; error: string }
+  importQueued: { projectId: string; batchId: string; fileName: string }
+  importStarted: { projectId: string; batchId: string }
+  importFinished: { projectId: string; batchId: string; batch: ImportBatchSummary }
+  importFailed: { projectId: string; batchId: string; error: string }
   recalculationFinished: { projectId: string; documents: number }
 }
 
 export type SyncEventName = keyof SyncEvents
 
 export const syncEventNames: SyncEventName[] = [
-  'syncStarted', 'folderSynced', 'syncFinished', 'fileQueued',
-  'fileImportStarted', 'fileImported', 'fileFailed', 'recalculationFinished',
+  'importQueued', 'importStarted', 'importFinished', 'importFailed',
+  'recalculationFinished',
 ]
 
 export type HubStatus = 'connecting' | 'connected' | 'reconnecting' | 'disconnected'

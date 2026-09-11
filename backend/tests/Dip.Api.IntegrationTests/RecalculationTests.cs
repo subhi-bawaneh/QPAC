@@ -1,5 +1,4 @@
 using Dip.Api.Features.Recalculation;
-using Dip.Domain.Enums;
 using Dip.Infrastructure.Persistence;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
@@ -8,8 +7,9 @@ using Xunit;
 
 namespace Dip.Api.IntegrationTests;
 
-// Snapshots are the materialised tracker rows (decision D11): they carry the layer and
-// the display columns, and a row that leaves the effective set loses its snapshot.
+// Snapshots are the materialised tracker rows: they carry the display columns copied
+// off the document, and a document that goes takes its snapshot with it — by foreign
+// key now, rather than by the sweep the two-layer model needed.
 [Collection(IntegrationTestCollection.Name)]
 public class RecalculationTests
 {
@@ -18,16 +18,12 @@ public class RecalculationTests
     public RecalculationTests(DipApiFactory factory) => _factory = factory;
 
     [Fact]
-    public async Task DraftRows_GetSnapshots_CarryingLayerAndDisplayColumns()
+    public async Task Documents_GetSnapshots_CarryingTheDisplayColumns()
     {
         if (!_factory.IsPostgresAvailable) return;
 
-        var admin = await TestHelpers.AuthedAdminAsync(_factory);
         var projectId = await TestHelpers.NewProjectAsync(_factory, "Recalculation test");
-        var folderId = await TestHelpers.CreateFolderAsync(
-            admin, $"RecalcDraft-{Guid.NewGuid():N}", projectId: projectId);
-        await TestHelpers.SetTargetAsync(admin, folderId, "Draft");
-        await TestHelpers.ImportedAsync(admin, folderId, "TIDP-STL.xlsx");
+        var (tidpFileId, documentIds) = await TestHelpers.SeedDocumentsAsync(_factory, projectId, count: 4);
 
         await RunAllAsync(projectId);
 
@@ -37,49 +33,46 @@ public class RecalculationTests
             .Where(s => s.ProjectId == projectId)
             .ToListAsync();
 
-        snapshots.Should().NotBeEmpty();
-        snapshots.Should().OnlyContain(s => s.Layer == DataTarget.Draft);
+        snapshots.Should().HaveCount(4);
         snapshots.Should().OnlyContain(s => s.DocumentNumber != "");
         snapshots.Should().OnlyContain(s => s.Discipline == "Structural");
         snapshots.Should().OnlyContain(s => s.Trade == "STL");
-
-        // Every snapshot is keyed by a draft row id, not by a Live document id.
-        var draftIds = await db.DocumentDrafts.AsNoTracking()
-            .Where(d => d.ProjectId == projectId).Select(d => d.Id).ToListAsync();
-        snapshots.Select(s => s.DocumentId).Should().BeSubsetOf(draftIds);
+        snapshots.Should().OnlyContain(s => s.TidpFileId == tidpFileId);
+        snapshots.Select(s => s.DocumentId).Should().BeEquivalentTo(documentIds);
     }
 
+    // The foreign key is what removes a stale row now. Deleting a document must take
+    // its tracker row with it, or the register would keep showing a drawing that the
+    // replace or delete path has already removed.
     [Fact]
-    public async Task StaleSnapshots_AreRemovedWhenTheRowLeavesTheEffectiveSet()
+    public async Task DeletingADocument_RemovesItsSnapshot()
     {
         if (!_factory.IsPostgresAvailable) return;
 
-        var admin = await TestHelpers.AuthedAdminAsync(_factory);
-        var projectId = await TestHelpers.NewProjectAsync(_factory, "Stale snapshot test");
-        var folderId = await TestHelpers.CreateFolderAsync(
-            admin, $"RecalcStale-{Guid.NewGuid():N}", projectId: projectId);
-        await TestHelpers.SetTargetAsync(admin, folderId, "Draft");
-        var file = await TestHelpers.ImportedAsync(admin, folderId, "TIDP-STL.xlsx");
-        var fileId = file.GetProperty("id").GetGuid();
+        var projectId = await TestHelpers.NewProjectAsync(_factory, "Snapshot cascade test");
+        var (_, documentIds) = await TestHelpers.SeedDocumentsAsync(_factory, projectId, count: 3);
 
         await RunAllAsync(projectId);
 
-        Guid removedId;
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<DipDbContext>();
-            var draft = await db.DocumentDrafts.FirstAsync(d => d.FolderFileId == fileId);
-            removedId = draft.Id;
-            db.DocumentDrafts.Remove(draft);
-            await db.SaveChangesAsync();
+            (await db.DocumentSnapshots.CountAsync(s => s.ProjectId == projectId)).Should().Be(3);
+
+            await db.Documents.Where(d => d.Id == documentIds[0]).ExecuteDeleteAsync();
         }
 
-        await RunAllAsync(projectId);
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DipDbContext>();
+            var remaining = await db.DocumentSnapshots.AsNoTracking()
+                .Where(s => s.ProjectId == projectId)
+                .Select(s => s.DocumentId)
+                .ToListAsync();
 
-        using var check = _factory.Services.CreateScope();
-        var checkDb = check.ServiceProvider.GetRequiredService<DipDbContext>();
-        (await checkDb.DocumentSnapshots.AnyAsync(s => s.DocumentId == removedId))
-            .Should().BeFalse("the row is no longer in the effective set");
+            remaining.Should().HaveCount(2);
+            remaining.Should().NotContain(documentIds[0]);
+        }
     }
 
     private async Task RunAllAsync(Guid projectId)

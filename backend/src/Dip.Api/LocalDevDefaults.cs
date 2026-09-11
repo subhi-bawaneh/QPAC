@@ -12,12 +12,11 @@ public sealed record LocalDevSetup(
     string DatabaseFile,
     string AdminEmail,
     string? AdminPassword,
-    string? DriveMirrorPath,
     bool ReplacedPostgresConnection);
 
 // Local development runs on a SQLite file, never on Neon: `dotnet run` brings up the
 // API on App_Data/dip-local.db, a seeded SuperAdmin you can actually log in as, and the
-// checked-out Qpac_1/ tree standing in for Google Drive.
+// SQLite file so a developer needs neither Postgres nor a cloud account.
 //
 // This deliberately overrides a Postgres ConnectionStrings:Default left in user-secrets
 // — the point is that a local run never touches the shared database. Export
@@ -31,7 +30,6 @@ public static class LocalDevDefaults
     private const string SecretsFileName = "dev-secrets.json";
     private const string DatabaseFileName = "dip-local.db";
     private const string DefaultAdminEmail = "admin@dip.local";
-    private const string MirrorFolderName = "Qpac_1";
 
     /// Applies the defaults and returns what they were, or null when this run is not a
     /// plain local one: anything but Development, the `dotnet ef` design-time host
@@ -54,7 +52,6 @@ public static class LocalDevDefaults
 
         var secrets = LoadOrCreateSecrets(Path.Combine(appData, SecretsFileName));
         var databaseFile = Path.Combine(appData, DatabaseFileName);
-        var mirrorPath = FindDriveMirror(builder.Environment.ContentRootPath);
 
         // A SQLite connection string the developer set themselves is theirs to keep;
         // a Postgres one (typically Neon, in user-secrets) is replaced.
@@ -74,19 +71,12 @@ public static class LocalDevDefaults
         Fill(builder, values, "Seed:AdminEmail", DefaultAdminEmail);
         Fill(builder, values, "Seed:AdminPassword", secrets.AdminPassword);
 
-        if (mirrorPath is not null)
-        {
-            Fill(builder, values, "GoogleDrive:LocalMirrorPath", mirrorPath);
-            Fill(builder, values, "GoogleDrive:StartupDelaySeconds", "3");
-        }
-
         builder.Configuration.AddInMemoryCollection(values);
 
         return new LocalDevSetup(
             keepConfigured ? configured! : databaseFile,
             builder.Configuration["Seed:AdminEmail"] ?? DefaultAdminEmail,
             generatedPassword ? secrets.AdminPassword : null,
-            mirrorPath,
             !keepConfigured && !string.IsNullOrWhiteSpace(configured));
     }
 
@@ -132,19 +122,4 @@ public static class LocalDevDefaults
     // 8+ characters with an upper case letter, a lower case letter and a digit.
     private static string NewAdminPassword()
         => "Dev" + Convert.ToHexString(RandomNumberGenerator.GetBytes(4)).ToLowerInvariant() + "A1";
-
-    // The Drive mirror is the Qpac_1/ folder at the top of this repository; the API's
-    // content root is backend/src/Dip.Api, so walk up until it appears.
-    private static string? FindDriveMirror(string contentRoot)
-    {
-        var directory = new DirectoryInfo(contentRoot);
-        for (var depth = 0; depth < 6 && directory is not null; depth++)
-        {
-            var candidate = Path.Combine(directory.FullName, MirrorFolderName);
-            if (Directory.Exists(candidate)) return candidate;
-            directory = directory.Parent;
-        }
-
-        return null;
-    }
 }

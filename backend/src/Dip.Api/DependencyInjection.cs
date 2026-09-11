@@ -34,11 +34,8 @@ public static class DependencyInjection
         services.AddExceptionHandler<ProblemDetailsExceptionHandler>();
         services.AddProblemDetails();
         // /health is the liveness probe an uptime monitor polls: process + database.
-        // Drive is tagged "external" and only reported on /health/detail, so a Google
-        // outage never makes this API look down.
         services.AddHealthChecks()
-            .AddCheck<DatabaseHealthCheck>(DatabaseHealthCheck.Name, tags: ["core"])
-            .AddCheck<DriveHealthCheck>(DriveHealthCheck.Name, tags: ["external"]);
+            .AddCheck<DatabaseHealthCheck>(DatabaseHealthCheck.Name, tags: ["core"]);
 
         services.AddSwaggerGen(options =>
         {
@@ -187,13 +184,7 @@ public static class DependencyInjection
         // do the work, and the two hosted workers that drive them (decision D4).
         services.AddSignalR();
         services.AddSingleton<Workers.WorkQueue>();
-        services.AddSingleton<Workers.WorkerState>();
-        services.AddSingleton<Workers.SyncTrigger>();
-        services.AddSingleton<Workers.ISyncTrigger>(sp => sp.GetRequiredService<Workers.SyncTrigger>());
         services.AddSingleton<Hubs.ISyncNotifier, Hubs.HubSyncNotifier>();
-        services.AddScoped<Workers.DriveSyncService>();
-        services.AddScoped<Workers.FileImportService>();
-        services.AddHostedService<Workers.DriveSyncWorker>();
         services.AddHostedService<Workers.ImportWorker>();
 
         // Pipeline behaviors — order matters: Logging first, Auth second, then Validation, then Transaction (commands only).

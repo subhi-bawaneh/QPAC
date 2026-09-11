@@ -2,16 +2,12 @@ using Dip.Api.Features.Imports;
 
 namespace Dip.Api.Hubs;
 
-// Used by the integration tests, which drive the workers directly and assert on
-// the database rather than on hub traffic.
+// Used when SignalR is not wired up (integration tests): every event is dropped.
 public sealed class NoopSyncNotifier : ISyncNotifier
 {
-    public Task SyncStartedAsync(Guid projectId, DateTime at) => Task.CompletedTask;
-    public Task FolderSyncedAsync(Guid projectId, Guid folderId, string path, int files) => Task.CompletedTask;
-    public Task SyncFinishedAsync(Guid projectId, int foldersSynced, int filesQueued, string? error) => Task.CompletedTask;
-    public Task FileQueuedAsync(Guid projectId, Guid fileId, Guid folderId) => Task.CompletedTask;
-    public Task FileImportStartedAsync(Guid projectId, Guid fileId) => Task.CompletedTask;
-    public Task FileImportedAsync(Guid projectId, Guid fileId, Guid folderId, ImportBatchSummary batch) => Task.CompletedTask;
-    public Task FileFailedAsync(Guid projectId, Guid fileId, Guid folderId, string error) => Task.CompletedTask;
+    public Task ImportQueuedAsync(Guid projectId, Guid batchId, string fileName) => Task.CompletedTask;
+    public Task ImportStartedAsync(Guid projectId, Guid batchId) => Task.CompletedTask;
+    public Task ImportFinishedAsync(Guid projectId, Guid batchId, ImportBatchSummary batch) => Task.CompletedTask;
+    public Task ImportFailedAsync(Guid projectId, Guid batchId, string error) => Task.CompletedTask;
     public Task RecalculationFinishedAsync(Guid projectId, int documents) => Task.CompletedTask;
 }

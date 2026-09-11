@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/shared/api/client'
-import type { DataTarget, Workbook } from '@/shared/api/types'
+import type { Workbook } from '@/shared/api/types'
 import { rowToPayload } from './columns'
 import type { WorkbookColumn } from '@/shared/api/types'
 
@@ -10,7 +10,7 @@ export const workbookKeys = {
   sheet: (fileId: string, sheet: string) => ['workbook', fileId, sheet] as const,
 }
 
-// The sheet is paged as the user scrolls; the header block, column list and layer
+// The sheet is paged as the user scrolls; the header block and column list
 // come back on every page and only the first one is kept.
 export function useWorkbook(fileId: string, sheet: string) {
   return useInfiniteQuery({
@@ -30,12 +30,12 @@ export function useWorkbook(fileId: string, sheet: string) {
   })
 }
 
-/** The Draft layer edits the draft row; the Live layer edits the document. */
-export function saveRowUrl(layer: DataTarget, rowId: string): string {
-  return layer === 'Draft' ? `/api/drafts/documents/${rowId}` : `/api/documents/${rowId}`
+/** With the Draft layer gone there is one row to edit: the document itself. */
+export function saveRowUrl(rowId: string): string {
+  return `/api/documents/${rowId}`
 }
 
-export function useSaveRow(fileId: string, sheet: string, layer: DataTarget) {
+export function useSaveRow(fileId: string, sheet: string) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (input: {
@@ -44,7 +44,7 @@ export function useSaveRow(fileId: string, sheet: string, layer: DataTarget) {
       cells: (string | null)[]
     }) => {
       const { data } = await api.put(
-        saveRowUrl(layer, input.rowId),
+        saveRowUrl(input.rowId),
         rowToPayload(input.columns, input.cells),
       )
       return data

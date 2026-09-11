@@ -12,22 +12,15 @@ public static class Permissions
     // Project
     public const string ProjectSettings = "project.settings";
 
-    // Folders
-    public const string FoldersManage = "folders.manage";
-    public const string FoldersAssignTarget = "folders.assignTarget";
-
-    // Drive
-    public const string DriveSync = "drive.sync";
-
     // Imports
     public const string ImportRun = "import.run";
 
-    // Drafts
-    public const string DraftsEdit = "drafts.edit";
-    public const string DraftsPromote = "drafts.promote";
+    // Upload, replace and delete a source file. Granted to no role in RoleDefinitions:
+    // SuperAdmin holds it through Permissions.All, and nobody else has it.
+    public const string FilesManage = "files.manage";
 
     // Documents (live)
-    public const string DocumentsEditLive = "documents.editLive";
+    public const string DocumentsEdit = "documents.edit";
 
     // Reports
     public const string ReportsView = "reports.view";
@@ -43,11 +36,8 @@ public static class Permissions
     {
         UsersManage, RolesManage, SystemSettings,
         ProjectSettings,
-        FoldersManage, FoldersAssignTarget,
-        DriveSync,
-        ImportRun,
-        DraftsEdit, DraftsPromote,
-        DocumentsEditLive,
+        ImportRun, FilesManage,
+        DocumentsEdit,
         ReportsView, ReportsExport,
         ListsManage,
         BaselineManage,

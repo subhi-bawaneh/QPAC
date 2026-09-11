@@ -8,5 +8,5 @@ namespace Dip.Api.Features.Imports.ListImportBatches;
 public sealed record ListImportBatchesQuery(
     Guid ProjectId,
     ImportKind? Kind = null,
-    Guid? FolderFileId = null,
+    Guid? TidpFileId = null,
     int Take = 50) : IQuery<IReadOnlyCollection<ImportBatchSummary>>;

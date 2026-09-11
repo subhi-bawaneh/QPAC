@@ -3,19 +3,19 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Dip.Domain.Entities;
+using Dip.Domain.Enums;
+using Dip.Infrastructure.Persistence;
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Dip.Api.IntegrationTests;
 
-// Shared plumbing for the flow tests. Imports are automatic now (decision D5), so
-// a test uploads a workbook and then waits for the ImportWorker to finish with it.
+// Shared plumbing for the flow tests.
 internal static class TestHelpers
 {
     public static readonly Guid QpacProjectId = Guid.Parse("11111111-1111-1111-1111-111111111111");
-
-    private const string XlsxContentType =
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
     public static async Task<HttpClient> AuthedAdminAsync(DipApiFactory factory)
     {
@@ -106,84 +106,125 @@ internal static class TestHelpers
         return project.Id;
     }
 
-    public static async Task<Guid> CreateFolderAsync(
-        HttpClient admin, string name, Guid? parentId = null, Guid? projectId = null)
+    // Seeds a TidpFile and its documents straight into the database. Stage 2 has no
+    // upload endpoint — stage 3 adds it — so a test that needs a populated register
+    // writes one rather than going through a route that does not exist yet.
+    public static async Task<(Guid TidpFileId, IReadOnlyList<Guid> DocumentIds)> SeedDocumentsAsync(
+        DipApiFactory factory, Guid projectId, int count = 3, string discipline = "Structural")
     {
-        var response = await admin.PostAsJsonAsync("/api/folders", new
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DipDbContext>();
+
+        var disciplineRow = await db.Disciplines
+            .FirstOrDefaultAsync(d => d.ProjectId == projectId && d.CorporateName == discipline);
+        if (disciplineRow is null)
         {
-            projectId = projectId ?? QpacProjectId,
-            parentId,
-            name,
-        });
-        response.StatusCode.Should().Be(HttpStatusCode.Created,
-            "create folder failed: {0}", await response.Content.ReadAsStringAsync());
-        return Guid.Parse((await response.Content.ReadAsStringAsync()).Trim('"'));
-    }
-
-    public static async Task<JsonElement> SetTargetAsync(HttpClient admin, Guid folderId, string target)
-    {
-        var response = await admin.PutAsJsonAsync($"/api/folders/{folderId}/target", new { target });
-        response.StatusCode.Should().Be(HttpStatusCode.OK,
-            "set target failed: {0}", await response.Content.ReadAsStringAsync());
-        return await response.Content.ReadFromJsonAsync<JsonElement>();
-    }
-
-    public static async Task<HttpResponseMessage> UploadAsync(
-        HttpClient client, Guid folderId, string fileName, byte[]? bytes = null)
-    {
-        var multipart = new MultipartFormDataContent();
-        var content = new ByteArrayContent(bytes ?? await File.ReadAllBytesAsync(SamplePath(fileName)));
-        content.Headers.ContentType = new MediaTypeHeaderValue(XlsxContentType);
-        multipart.Add(content, "file", fileName);
-        return await client.PostAsync($"/api/folders/{folderId}/files", multipart);
-    }
-
-    public static async Task<Guid> UploadSampleAsync(HttpClient admin, Guid folderId, string fileName)
-    {
-        var response = await UploadAsync(admin, folderId, fileName);
-        response.StatusCode.Should().Be(HttpStatusCode.Accepted,
-            "upload failed: {0}", await response.Content.ReadAsStringAsync());
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
-        return body.GetProperty("fileId").GetGuid();
-    }
-
-    // The worker imports on its own thread; the flow tests poll the folder until it
-    // reports a terminal state for the file.
-    public static async Task<JsonElement> WaitForImportAsync(
-        HttpClient client, Guid folderId, Guid fileId, int timeoutSeconds = 120)
-    {
-        var deadline = DateTime.UtcNow.AddSeconds(timeoutSeconds);
-        JsonElement file = default;
-        var found = false;
-
-        while (DateTime.UtcNow < deadline)
-        {
-            var detail = await GetJsonAsync(client, $"/api/folders/{folderId}");
-            foreach (var candidate in detail.GetProperty("files").EnumerateArray())
+            disciplineRow = new Discipline
             {
-                if (candidate.GetProperty("id").GetGuid() != fileId) continue;
-                file = candidate;
-                found = true;
-                var state = candidate.GetProperty("state").GetString();
-                if (state is "Imported" or "Failed") return candidate;
-            }
-
-            await Task.Delay(250);
+                ProjectId = projectId,
+                Code = discipline[..Math.Min(3, discipline.Length)].ToUpperInvariant(),
+                CorporateName = discipline,
+            };
+            db.Disciplines.Add(disciplineRow);
         }
 
-        found.Should().BeTrue("file {0} should appear under folder {1}", fileId, folderId);
-        throw new TimeoutException(
-            $"File {fileId} was still {file.GetProperty("state").GetString()} after {timeoutSeconds}s");
+        var now = DateTime.UtcNow;
+        var file = new TidpFile
+        {
+            ProjectId = projectId,
+            DisciplineId = disciplineRow.Id,
+            DocumentReference = "SEED",
+            FileName = $"seed-{Guid.NewGuid():N}.xlsx",
+            UploadedBy = "test",
+            UploadedAt = now,
+            Status = TidpFileStatus.Imported,
+            CreatedAt = now,
+            CreatedBy = "test",
+            UpdatedAt = now,
+            UpdatedBy = "test",
+        };
+        db.TidpFiles.Add(file);
+
+        var ids = new List<Guid>();
+        for (var i = 0; i < count; i++)
+        {
+            var document = new Document
+            {
+                ProjectId = projectId,
+                TidpFileId = file.Id,
+                DisciplineId = disciplineRow.Id,
+                DocumentNumber = $"QF01012-NES-C04518-SDW-STL-00-Z00000-0ZZ{i:0000}",
+                Title = $"Seed document {i}",
+                F01Project = "QF01012",
+                F02Originator = "NES",
+                F03Contract = "C04518",
+                F04DocType = "SDW",
+                F05Discipline = "STL",
+                F06Zone = "00",
+                F07Building = "Z00000",
+                F08ADrawingType = "0",
+                F08BLevel = "ZZ",
+                F08CSequence = $"{i:0000}",
+                CorporateDiscipline = discipline,
+                CreatedAt = now,
+                CreatedBy = "test",
+                UpdatedAt = now,
+                UpdatedBy = "test",
+            };
+            db.Documents.Add(document);
+            ids.Add(document.Id);
+        }
+
+        await db.SaveChangesAsync();
+        return (file.Id, ids);
     }
 
-    public static async Task<JsonElement> ImportedAsync(
-        HttpClient admin, Guid folderId, string fileName)
+    // Imports a sample TIDP workbook straight through the importer. Stage 2 has no
+    // upload route; stage 3 adds one and the flow tests move onto it.
+    public static async Task<(Guid TidpFileId, Dip.Infrastructure.Importers.ImportResult Result)> ImportTidpAsync(
+        DipApiFactory factory, Guid projectId, string fileName)
     {
-        var fileId = await UploadSampleAsync(admin, folderId, fileName);
-        var file = await WaitForImportAsync(admin, folderId, fileId);
-        file.GetProperty("state").GetString().Should().Be("Imported",
-            "import error: {0}", file.GetProperty("importError").GetString());
-        return file;
+        Guid fileId;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DipDbContext>();
+            var disciplineId = await db.Disciplines
+                .Where(d => d.ProjectId == projectId)
+                .Select(d => d.Id)
+                .FirstAsync();
+
+            var now = DateTime.UtcNow;
+            var file = new TidpFile
+            {
+                ProjectId = projectId,
+                DisciplineId = disciplineId,
+                FileName = fileName,
+                UploadedBy = "test",
+                UploadedAt = now,
+                Status = TidpFileStatus.Importing,
+                CreatedAt = now,
+                CreatedBy = "test",
+                UpdatedAt = now,
+                UpdatedBy = "test",
+            };
+            db.TidpFiles.Add(file);
+            await db.SaveChangesAsync();
+            fileId = file.Id;
+        }
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var importer = scope.ServiceProvider
+                .GetRequiredService<Dip.Infrastructure.Importers.TidpImporter>();
+            await using var stream = File.OpenRead(SamplePath(fileName));
+            var result = await importer.ImportAsync(projectId, stream, fileId, "test", CancellationToken.None);
+
+            var db = scope.ServiceProvider.GetRequiredService<DipDbContext>();
+            await db.TidpFiles.Where(t => t.Id == fileId)
+                .ExecuteUpdateAsync(u => u.SetProperty(t => t.Status, TidpFileStatus.Imported));
+
+            return (fileId, result);
+        }
     }
 
     public static async Task<JsonElement> GetJsonAsync(HttpClient client, string url)

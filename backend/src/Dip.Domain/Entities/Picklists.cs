@@ -16,6 +16,10 @@ public class PicklistItem : Entity
     public bool IsDeleted { get; set; }
     public DateTime? DeletedAt { get; set; }
 
+    public bool IsEdited { get; set; }
+    public string? EditedBy { get; set; }
+    public DateTime? EditedAt { get; set; }
+
     public Project? Project { get; set; }
 }
 
@@ -30,6 +34,10 @@ public class StatusMapping : Entity
 
     public bool IsDeleted { get; set; }
     public DateTime? DeletedAt { get; set; }
+
+    public bool IsEdited { get; set; }
+    public string? EditedBy { get; set; }
+    public DateTime? EditedAt { get; set; }
 
     public Project? Project { get; set; }
 }

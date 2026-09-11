@@ -15,16 +15,14 @@ internal static class RoleDefinitions
     public static readonly IReadOnlyDictionary<string, string[]> RolePermissions =
         new Dictionary<string, string[]>
         {
+            // FilesManage is deliberately absent from every role: uploading, replacing
+            // and deleting a source file is the super admin's alone, and SuperAdmin
+            // holds it through Permissions.All rather than through this map.
             [Admin] =
             [
                 Permissions.ProjectSettings,
-                Permissions.FoldersManage,
-                Permissions.FoldersAssignTarget,
-                Permissions.DriveSync,
                 Permissions.ImportRun,
-                Permissions.DraftsEdit,
-                Permissions.DraftsPromote,
-                Permissions.DocumentsEditLive,
+                Permissions.DocumentsEdit,
                 Permissions.ReportsView,
                 Permissions.ReportsExport,
                 Permissions.ListsManage,
@@ -33,15 +31,13 @@ internal static class RoleDefinitions
             [Manager] =
             [
                 Permissions.ImportRun,
-                Permissions.DraftsEdit,
-                Permissions.DraftsPromote,
+                Permissions.DocumentsEdit,
                 Permissions.ReportsView,
                 Permissions.ReportsExport,
-                Permissions.DocumentsEditLive,
             ],
             [Editor] =
             [
-                Permissions.DraftsEdit,
+                Permissions.DocumentsEdit,
                 Permissions.ReportsView,
                 Permissions.ReportsExport,
             ],

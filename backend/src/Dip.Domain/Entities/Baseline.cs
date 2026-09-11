@@ -20,5 +20,9 @@ public class BaselineActivity : Entity
     public DateTime Start { get; set; }
     public DateTime Finish { get; set; }
 
+    public bool IsEdited { get; set; }
+    public string? EditedBy { get; set; }
+    public DateTime? EditedAt { get; set; }
+
     public Project? Project { get; set; }
 }

@@ -1,5 +1,4 @@
 using Dip.Api.Common;
-using Dip.Api.Features.Drafts.UpdateDraftDocument;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -31,7 +30,7 @@ public sealed class UpdateDocumentController : ApiControllerBase
         string F08BLevel,
         string F08CSequence,
         string CorporateDiscipline,
-        IReadOnlyList<DraftExchangeInput>? Exchanges);
+        IReadOnlyList<ExchangeInput>? Exchanges);
 
     [HttpPut]
     [ProducesResponseType(typeof(DocumentDto), StatusCodes.Status200OK)]

@@ -54,9 +54,7 @@ try
 
     if (localDev is not null)
     {
-        Log.Information(
-            "Local development mode — SQLite at {Database}. Drive mirror: {Mirror}",
-            localDev.DatabaseFile, localDev.DriveMirrorPath ?? "none");
+        Log.Information("Local development mode — SQLite at {Database}", localDev.DatabaseFile);
         Log.Information(
             localDev.AdminPassword is null
                 ? "Sign in as {Email} with your configured Seed:AdminPassword"

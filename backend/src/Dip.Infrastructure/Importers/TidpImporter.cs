@@ -10,18 +10,18 @@ using ParsedRow = Dip.Infrastructure.Importers.DocumentRowParser.ParsedRow;
 
 namespace Dip.Infrastructure.Importers;
 
-// Reads a TIDP workbook (`TIDP_Sheet`), extracts the discipline from the
-// header block, then walks the DOCUMENT NUMBER table and upserts one Tidp
-// row + one Document row per data row + two DataExchange rows per document.
+// Reads a TIDP workbook (`TIDP_Sheet`), extracts the discipline from the header
+// block, then walks the DOCUMENT NUMBER table and writes one Document row per
+// data row plus two DataExchange rows per document, all owned by the TidpFile
+// the upload created.
 //
-// Target=Live writes to Tidp/Document/DataExchange directly.
-// Target=Draft writes to TidpDraft/DocumentDraft/DataExchangeDraft and computes
-// DraftRowState.New | Modified | Unchanged vs the current Live values, so the
-// Promote diff (Phase 4.2) has everything it needs.
+// Ownership is first-file-wins. A number another TidpFile already owns is skipped
+// with a counted warning naming both files, never stolen: otherwise re-uploading
+// one discipline would silently move a document out of another.
 //
-// Document numbering per PLAN.md § 5.1.1:
-//   F01-F02-F03-F04-F05-F06-F07-F08A F08B F08C (no separator between S,T,U)
-// Leading zeros preserved: Zone -> 2 chars, Sequence -> 4 chars.
+// The number of record is the sheet's own DOCUMENT NUMBER, normalised. The
+// recompose from F01..F08C is a cross-check that becomes a warning here and a
+// control finding in stage 4 — never a rewrite.
 public sealed class TidpImporter
 {
     private readonly DipDbContext _db;
@@ -33,12 +33,24 @@ public sealed class TidpImporter
         _reader = reader;
     }
 
+    // Parses the workbook's discipline without importing anything, so the upload
+    // slice can create the TidpFile row before the rows land under it.
+    public string ReadDiscipline(Stream content)
+    {
+        using var wb = _reader.Open(content);
+        if (!wb.TryGetSheet("TIDP_Sheet", out var sheet) || sheet is null)
+        {
+            throw new InvalidOperationException("No 'TIDP_Sheet' sheet in workbook");
+        }
+
+        return ReadHeaderBlock(sheet).Discipline
+            ?? throw new InvalidOperationException("Cannot find DISCIPLINE in TIDP header");
+    }
+
     public async Task<ImportResult> ImportAsync(
         Guid projectId,
         Stream content,
-        DataTarget target,
-        Guid? folderFileId,
-        Guid? importBatchId,
+        Guid tidpFileId,
         string importedBy,
         CancellationToken ct)
     {
@@ -60,40 +72,57 @@ public sealed class TidpImporter
         var widths = SerialWidths.Create(
             await _db.DocumentTypeSerials.Where(s => s.ProjectId == projectId && !s.IsDeleted).ToListAsync(ct));
 
-        return target == DataTarget.Draft
-            ? await ImportDraftAsync(sheet, headerRow, columns, widths, projectId, discipline, header,
-                folderFileId, importBatchId, importedBy, ct)
-            : await ImportLiveAsync(sheet, headerRow, columns, widths, projectId, discipline, header,
-                folderFileId, importedBy, ct);
-    }
+        var project = await _db.Projects.FirstAsync(p => p.Id == projectId, ct);
+        var file = await _db.TidpFiles.FirstAsync(t => t.Id == tidpFileId, ct);
 
-    // ---------------------------------------------------------------- Live
+        file.DisciplineId = discipline.Id;
+        file.DocumentReference = header.DocumentReference ?? string.Empty;
+        file.RevisionNumber = header.RevisionNumber ?? "00";
+        file.DateCreated = header.DateCreated;
+        file.DateLastUpdated = header.DateLastUpdated;
 
-    private async Task<ImportResult> ImportLiveAsync(
-        IExcelSheet sheet, int headerRow, ColMap columns, SerialWidths widths,
-        Guid projectId, Discipline discipline, TidpHeader header,
-        Guid? folderFileId, string importedBy, CancellationToken ct)
-    {
-        var tidp = await UpsertTidpAsync(projectId, discipline.Id, header, folderFileId, importedBy, ct);
-
+        // Every document number in the project and who owns it, so an incoming row
+        // can be matched to this file's own row or refused as another file's.
         var existing = await _db.Documents
             .Where(d => d.ProjectId == projectId)
-            .Select(d => new { d.Id, d.DocumentNumber })
+            .Select(d => new { d.Id, d.DocumentNumber, d.TidpFileId })
             .ToListAsync(ct);
         var existingByNumber = existing.ToDictionary(d => d.DocumentNumber, StringComparer.OrdinalIgnoreCase);
+
+        var ownerNames = await _db.TidpFiles
+            .Where(t => t.ProjectId == projectId)
+            .Select(t => new { t.Id, t.FileName })
+            .ToDictionaryAsync(t => t.Id, t => t.FileName, ct);
 
         var read = 0;
         var inserted = 0;
         var updated = 0;
         var skipped = 0;
         var warnings = new List<string>();
+        var seenInThisFile = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         for (var r = headerRow + 1; r <= sheet.RowCount; r++)
         {
             var parsed = DocumentRowParser.ParseRow(sheet, r, columns, widths);
-            if (parsed is null) continue;
+            if (parsed is null)
+            {
+                // A row below the last populated one is the template's tail, not a
+                // defect. A row that has content but no F01/F04/F05 is a defect, and
+                // DocumentRowParser reports which through Rejection.
+                continue;
+            }
 
             read++;
+
+            // A row carrying another project's code is an Excel autofill accident,
+            // not a document. Rejected with the value so it can be found and fixed.
+            if (!string.Equals(parsed.F01, project.Code, StringComparison.OrdinalIgnoreCase))
+            {
+                skipped++;
+                warnings.Add(
+                    $"Row {r}: PROJECT is {parsed.F01}, not {project.Code} - rejected ({parsed.DocumentNumber})");
+                continue;
+            }
 
             if (parsed.Mismatch is { } mismatch)
             {
@@ -102,36 +131,54 @@ public sealed class TidpImporter
                     + $"{mismatch.Field} is {mismatch.FieldSays}, number says {mismatch.NumberSays}");
             }
 
+            if (!seenInThisFile.Add(parsed.DocumentNumber))
+            {
+                skipped++;
+                warnings.Add($"Row {r}: {parsed.DocumentNumber} appears more than once in this file - skipped");
+                continue;
+            }
 
             if (existingByNumber.TryGetValue(parsed.DocumentNumber, out var existingRef))
             {
+                if (existingRef.TidpFileId != tidpFileId)
+                {
+                    var owner = ownerNames.TryGetValue(existingRef.TidpFileId, out var name) ? name : "another file";
+                    skipped++;
+                    warnings.Add(
+                        $"Row {r}: {parsed.DocumentNumber} already belongs to {owner} - skipped");
+                    continue;
+                }
+
                 var doc = await _db.Documents
                     .Include(d => d.Exchanges)
                     .SingleAsync(d => d.Id == existingRef.Id, ct);
-                ApplyToDocument(doc, parsed, tidp.Id, discipline.Id, folderFileId, importedBy, isNew: false);
+                ApplyToDocument(doc, parsed, tidpFileId, discipline.Id, importedBy, isNew: false);
                 updated++;
             }
             else
             {
                 var doc = new Document();
-                ApplyToDocument(doc, parsed, tidp.Id, discipline.Id, folderFileId, importedBy, isNew: true);
+                ApplyToDocument(doc, parsed, tidpFileId, discipline.Id, importedBy, isNew: true);
                 doc.ProjectId = projectId;
                 _db.Documents.Add(doc);
                 inserted++;
             }
         }
 
+        file.RowsRead = read;
+        file.RowsImported = inserted + updated;
+        file.RowsSkipped = skipped;
+
         await _db.SaveChangesAsync(ct);
         return new ImportResult(read, inserted, updated, skipped, warnings);
     }
 
     private static void ApplyToDocument(
-        Document doc, ParsedRow parsed, Guid tidpId, Guid disciplineId, Guid? folderFileId,
+        Document doc, ParsedRow parsed, Guid tidpFileId, Guid disciplineId,
         string importedBy, bool isNew)
     {
-        doc.TidpId = tidpId;
+        doc.TidpFileId = tidpFileId;
         doc.DisciplineId = disciplineId;
-        doc.FolderFileId = folderFileId;
         doc.DocumentNumber = parsed.DocumentNumber;
         doc.Title = parsed.Title;
         doc.ExtractedFromModel = parsed.ExtractedFromModel;
@@ -156,6 +203,12 @@ public sealed class TidpImporter
         doc.CorporateDiscipline = parsed.CorporateDiscipline;
         // PLAN.md § 5.2 says BudgetWeight defaults to Exchange 01 duration (or 1).
         doc.BudgetWeight = parsed.Exchange1?.DurationDays ?? 1m;
+
+        // An import is not a hand edit: a replaced row goes back to being imported
+        // data, which is what the dialog's edited-row count has already warned about.
+        doc.IsEdited = false;
+        doc.EditedBy = null;
+        doc.EditedAt = null;
 
         var now = DateTime.UtcNow;
         if (isNew)
@@ -201,205 +254,6 @@ public sealed class TidpImporter
             existing.Predecessor = row.Predecessor;
             existing.ExchangeDate = row.ExchangeDate;
         }
-    }
-
-    // --------------------------------------------------------------- Draft
-
-    private async Task<ImportResult> ImportDraftAsync(
-        IExcelSheet sheet, int headerRow, ColMap columns, SerialWidths widths,
-        Guid projectId, Discipline discipline, TidpHeader header,
-        Guid? folderFileId, Guid? importBatchId, string importedBy, CancellationToken ct)
-    {
-        if (folderFileId is null || importBatchId is null)
-        {
-            throw new InvalidOperationException("Draft imports require FolderFileId and ImportBatchId");
-        }
-
-        // Clear any prior draft from the same FolderFile so the run is deterministic.
-        await _db.DocumentDrafts
-            .Where(d => d.FolderFileId == folderFileId.Value)
-            .ExecuteDeleteAsync(ct);
-        await _db.TidpDrafts
-            .Where(d => d.FolderFileId == folderFileId.Value)
-            .ExecuteDeleteAsync(ct);
-
-        var tidpDraft = new TidpDraft
-        {
-            ProjectId = projectId,
-            DisciplineId = discipline.Id,
-            FolderFileId = folderFileId.Value,
-            ImportBatchId = importBatchId.Value,
-            DocumentReference = header.DocumentReference ?? string.Empty,
-            RevisionNumber = header.RevisionNumber ?? "00",
-            DateCreated = header.DateCreated,
-            DateLastUpdated = header.DateLastUpdated,
-            State = DraftRowState.New,
-            CreatedAt = DateTime.UtcNow,
-            CreatedBy = importedBy,
-            UpdatedAt = DateTime.UtcNow,
-            UpdatedBy = importedBy,
-        };
-        _db.TidpDrafts.Add(tidpDraft);
-
-        // Preload existing Live docs so we can compute Diff state.
-        var live = await _db.Documents
-            .Include(d => d.Exchanges)
-            .Where(d => d.ProjectId == projectId)
-            .ToListAsync(ct);
-        var liveByNumber = live.ToDictionary(d => d.DocumentNumber, StringComparer.OrdinalIgnoreCase);
-
-        // Track duplicates within the same file.
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        var read = 0;
-        var inserted = 0;
-        var updated = 0;
-        var skipped = 0;
-        var warnings = new List<string>();
-
-        for (var r = headerRow + 1; r <= sheet.RowCount; r++)
-        {
-            var parsed = DocumentRowParser.ParseRow(sheet, r, columns, widths);
-            if (parsed is null) continue;
-
-            read++;
-
-            if (parsed.Mismatch is { } mismatch)
-            {
-                warnings.Add(
-                    $"Row {r}: document number does not match its fields: "
-                    + $"{mismatch.Field} is {mismatch.FieldSays}, number says {mismatch.NumberSays}");
-            }
-
-
-            var isDuplicate = !seen.Add(parsed.DocumentNumber);
-            if (isDuplicate)
-            {
-                warnings.Add($"Row {r}: duplicate DocumentNumber {parsed.DocumentNumber} within this file");
-            }
-
-            var (state, liveDocId) = DiffAgainstLive(parsed, liveByNumber);
-
-            var draft = new DocumentDraft
-            {
-                ProjectId = projectId,
-                TidpDraftId = tidpDraft.Id,
-                DisciplineId = discipline.Id,
-                FolderFileId = folderFileId.Value,
-                ImportBatchId = importBatchId.Value,
-                DocumentNumber = parsed.DocumentNumber,
-                Title = parsed.Title,
-                ExtractedFromModel = parsed.ExtractedFromModel,
-                ScopeArea = parsed.ScopeArea,
-                AuthoringSoftware = parsed.AuthoringSoftware,
-                ExchangeFormat = parsed.ExchangeFormat,
-                Scale = parsed.Scale,
-                DeliveryMilestone = parsed.DeliveryMilestone,
-                PackageName = parsed.PackageName,
-                ActivityId = parsed.ActivityId,
-                ClassificationCode = parsed.ClassificationCode,
-                F01Project = parsed.F01,
-                F02Originator = parsed.F02,
-                F03Contract = parsed.F03,
-                F04DocType = parsed.F04,
-                F05Discipline = parsed.F05,
-                F06Zone = parsed.F06,
-                F07Building = parsed.F07,
-                F08ADrawingType = parsed.F08A,
-                F08BLevel = parsed.F08B,
-                F08CSequence = parsed.F08C,
-                CorporateDiscipline = parsed.CorporateDiscipline,
-                BudgetWeight = parsed.Exchange1?.DurationDays ?? 1m,
-                State = state,
-                LiveDocumentId = liveDocId,
-                IsDuplicate = isDuplicate,
-                CreatedAt = DateTime.UtcNow,
-                CreatedBy = importedBy,
-                UpdatedAt = DateTime.UtcNow,
-                UpdatedBy = importedBy,
-            };
-
-            AppendDraftExchange(draft, 1, parsed.Exchange1);
-            AppendDraftExchange(draft, 2, parsed.Exchange2);
-            _db.DocumentDrafts.Add(draft);
-
-            if (state == DraftRowState.New) inserted++;
-            else if (state == DraftRowState.Modified) updated++;
-            else skipped++;
-        }
-
-        await _db.SaveChangesAsync(ct);
-        return new ImportResult(read, inserted, updated, skipped, warnings);
-    }
-
-    private static void AppendDraftExchange(DocumentDraft draft, int number, ExchangeRow? row)
-    {
-        if (row is null) return;
-        draft.Exchanges.Add(new DataExchangeDraft
-        {
-            Number = number,
-            Author = row.Author,
-            Geometrical = row.Geometrical,
-            NonGeometrical = row.NonGeometrical,
-            DurationDays = (int?)row.DurationDays,
-            Predecessor = row.Predecessor,
-            ExchangeDate = row.ExchangeDate,
-        });
-    }
-
-    private static (DraftRowState State, Guid? LiveDocId) DiffAgainstLive(
-        ParsedRow parsed, Dictionary<string, Document> liveByNumber)
-    {
-        if (!liveByNumber.TryGetValue(parsed.DocumentNumber, out var live))
-        {
-            return (DraftRowState.New, null);
-        }
-
-        // Field-by-field comparison lives in DraftDiff so the importers and the
-        // Draft editor can never drift apart on what counts as "Modified".
-        var state = DraftDiff.StateFor(DraftDiff.From(live), DocumentRowParser.ToComparable(parsed));
-        return (state, live.Id);
-    }
-
-    // ---------------------------------------------------------------- Tidp
-
-    private async Task<Tidp> UpsertTidpAsync(
-        Guid projectId, Guid disciplineId, TidpHeader header,
-        Guid? folderFileId, string importedBy, CancellationToken ct)
-    {
-        var existing = await _db.Tidps
-            .FirstOrDefaultAsync(t => t.ProjectId == projectId && t.DisciplineId == disciplineId, ct);
-
-        var now = DateTime.UtcNow;
-        if (existing is null)
-        {
-            var created = new Tidp
-            {
-                ProjectId = projectId,
-                DisciplineId = disciplineId,
-                FolderFileId = folderFileId,
-                DocumentReference = header.DocumentReference ?? string.Empty,
-                RevisionNumber = header.RevisionNumber ?? "00",
-                DateCreated = header.DateCreated,
-                DateLastUpdated = header.DateLastUpdated,
-                CreatedAt = now,
-                CreatedBy = importedBy,
-                UpdatedAt = now,
-                UpdatedBy = importedBy,
-            };
-            _db.Tidps.Add(created);
-            await _db.SaveChangesAsync(ct);
-            return created;
-        }
-
-        existing.FolderFileId = folderFileId ?? existing.FolderFileId;
-        existing.DocumentReference = header.DocumentReference ?? existing.DocumentReference;
-        existing.RevisionNumber = header.RevisionNumber ?? existing.RevisionNumber;
-        existing.DateCreated = header.DateCreated ?? existing.DateCreated;
-        existing.DateLastUpdated = header.DateLastUpdated ?? existing.DateLastUpdated;
-        existing.UpdatedAt = now;
-        existing.UpdatedBy = importedBy;
-        return existing;
     }
 
     // -------------------------------------------------------------- Header

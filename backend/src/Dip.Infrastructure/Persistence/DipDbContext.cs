@@ -28,19 +28,10 @@ public class DipDbContext
     public DbSet<StatusMapping> StatusMappings => Set<StatusMapping>();
     public DbSet<DocumentTypeSerial> DocumentTypeSerials => Set<DocumentTypeSerial>();
     public DbSet<BaselineActivity> BaselineActivities => Set<BaselineActivity>();
-    public DbSet<Folder> Folders => Set<Folder>();
-    public DbSet<FolderFile> FolderFiles => Set<FolderFile>();
-    public DbSet<FileBlob> FileBlobs => Set<FileBlob>();
-    public DbSet<Tidp> Tidps => Set<Tidp>();
+    public DbSet<TidpFile> TidpFiles => Set<TidpFile>();
     public DbSet<Document> Documents => Set<Document>();
     public DbSet<DataExchange> DataExchanges => Set<DataExchange>();
     public DbSet<AconexRevision> AconexRevisions => Set<AconexRevision>();
-
-    // Draft entities
-    public DbSet<TidpDraft> TidpDrafts => Set<TidpDraft>();
-    public DbSet<DocumentDraft> DocumentDrafts => Set<DocumentDraft>();
-    public DbSet<DataExchangeDraft> DataExchangeDrafts => Set<DataExchangeDraft>();
-    public DbSet<PromoteBatch> PromoteBatches => Set<PromoteBatch>();
 
     // Materialized / operational
     public DbSet<DocumentSnapshot> DocumentSnapshots => Set<DocumentSnapshot>();

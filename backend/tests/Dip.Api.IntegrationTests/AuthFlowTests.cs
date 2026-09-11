@@ -70,7 +70,8 @@ public class AuthFlowTests
         var permissions = user.GetProperty("permissions").EnumerateArray().Select(p => p.GetString()).ToArray();
         permissions.Should().Contain("users.manage");
         permissions.Should().Contain("import.run");
-        permissions.Should().Contain("drafts.promote");
+        permissions.Should().Contain("files.manage");
+        permissions.Should().Contain("documents.edit");
 
         var roles = user.GetProperty("roles").EnumerateArray().Select(r => r.GetString()).ToArray();
         roles.Should().Contain("SuperAdmin");

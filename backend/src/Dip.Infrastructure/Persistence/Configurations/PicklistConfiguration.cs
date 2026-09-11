@@ -14,6 +14,8 @@ internal sealed class PicklistItemConfiguration : IEntityTypeConfiguration<Pickl
         b.Property(x => x.Description).HasMaxLength(300).IsRequired();
         b.Property(x => x.Field).HasConversion<string>().HasMaxLength(40);
         b.Property(x => x.DeletedAt).HasColumnType("timestamp without time zone");
+        b.Property(x => x.EditedBy).HasMaxLength(200);
+        b.Property(x => x.EditedAt).HasColumnType("timestamp without time zone");
         // Uniqueness applies to the live codes only, so a code can be soft-deleted
         // and later re-created (refactor-plan § 3 R9).
         b.HasIndex(x => new { x.ProjectId, x.Field, x.Code })
@@ -32,6 +34,8 @@ internal sealed class StatusMappingConfiguration : IEntityTypeConfiguration<Stat
         b.Property(x => x.AconexStatus).HasMaxLength(100).IsRequired();
         b.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
         b.Property(x => x.DeletedAt).HasColumnType("timestamp without time zone");
+        b.Property(x => x.EditedBy).HasMaxLength(200);
+        b.Property(x => x.EditedAt).HasColumnType("timestamp without time zone");
         b.HasIndex(x => new { x.ProjectId, x.AconexStatus })
             .IsUnique()
             .HasFilter("NOT \"IsDeleted\"");

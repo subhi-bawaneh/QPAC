@@ -5,8 +5,7 @@ import { RequireAuth, RequirePermission } from '@/shared/auth/RequireAuth'
 import { Permissions } from '@/shared/auth/permissions'
 import { LoginPage } from '@/features/auth/LoginPage'
 import { PlaceholderPage } from '@/features/placeholder/PlaceholderPage'
-import { ExplorerPage } from '@/features/explorer/ExplorerPage'
-import { DraftReviewPage } from '@/features/drafts/DraftReviewPage'
+import { TidpFilesPage } from '@/features/tidps/TidpFilesPage'
 import { TrackerPage } from '@/features/tracker/TrackerPage'
 import { MidpPage } from '@/features/midp/MidpPage'
 import { BaselinePage } from '@/features/baseline/BaselinePage'
@@ -42,9 +41,8 @@ export function AppRoutes() {
                 </Suspense>
               }
             />
-            <Route path="tidps" element={<ExplorerPage />} />
-            <Route path="files/:fileId" element={<WorkbookPage />} />
-            <Route path="drafts/:folderFileId" element={<DraftReviewPage />} />
+            <Route path="tidps" element={<TidpFilesPage />} />
+            <Route path="tidps/:tidpFileId" element={<WorkbookPage />} />
             <Route path="midp" element={<MidpPage />} />
             <Route path="tracker" element={<TrackerPage />} />
             <Route

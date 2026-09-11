@@ -18,129 +18,22 @@ export interface AuthResult {
   user: UserSummary
 }
 
-export type DataTarget = 'Live' | 'Draft'
-export type ImportState = 'NotImported' | 'Imported' | 'Outdated' | 'Failed'
-export type FileKind = 'Unknown' | 'Tidp' | 'Midp' | 'Baseline' | 'AconexHistory' | 'Lists' | 'Picklists'
-
-export type FileSource = 'Drive' | 'Upload'
-
-/** A node of the folder tree (GET /api/projects/{id}/folders/tree). */
-export interface FolderTreeNode {
-  id: string
-  parentId: string | null
-  name: string
-  path: string
-  target: DataTarget
-  isCompany: boolean
-  authorName: string | null
-  fileCount: number
-  /** Drive holds rows the Live layer has not taken yet, here or below. */
-  hasNewerDraft: boolean
-  children: FolderTreeNode[]
-}
-
-/** A folder with its counts (GET /api/folders/{id}). */
-export interface FolderNode {
-  id: string
-  parentId: string | null
-  name: string
-  path: string
-  target: DataTarget
-  driveFolderId: string | null
-  lastSyncedAt: string | null
-  isCompany: boolean
-  authorId: string | null
-  authorName: string | null
-  childCount: number
-  fileCount: number
-  hasNewerDraft: boolean
-}
-
-export interface FolderDetail {
-  folder: FolderNode
-  subfolders: FolderNode[]
-  files: FolderFileSummary[]
-}
-
-export interface FolderFileSummary {
-  id: string
-  name: string
-  kind: FileKind
-  contentSource: FileSource
-  contentModifiedAt: string
-  driveFileId: string | null
-  driveModifiedAt: string | null
-  sizeBytes: number
-  state: ImportState
-  importError: string | null
-  lastImportedAt: string | null
-  /** Draft or Live rows this file produced, whichever layer its folder targets. */
-  rowCount: number | null
-  hasNewerDraft: boolean
-  effectiveLayer: DataTarget
-}
-
-/** 202 body of POST /api/folders/{id}/files — the import runs in the worker. */
-export interface UploadResult {
-  fileId: string
-  name: string
-  replaced: boolean
-}
-
-export interface DriveStatus {
-  isRunning: boolean
-  lastRunStartedAt: string | null
-  lastRunFinishedAt: string | null
-  lastRunError: string | null
-  nextRunAt: string | null
-  queuedImports: number
-}
-
-export interface TriggerSyncResult {
-  queued: boolean
-  alreadyRunning: boolean
-}
-
-export interface SetTargetResult {
-  folderId: string
-  target: DataTarget
-  foldersUpdated: number
-}
-
-export interface ConvertedFile {
-  fileId: string
-  name: string
-  added: number
-  updated: number
-  deleted: number
-  conflicts: number
-}
-
-export interface ConvertToLiveResult {
-  folderId: string
-  filesConverted: number
-  added: number
-  updated: number
-  deleted: number
-  skipped: number
-  conflicts: number
-  perFile: ConvertedFile[]
-}
-
 export interface ImportBatchSummary {
   id: string
   projectId: string
   kind: string
-  target: DataTarget
-  folderFileId: string | null
+  tidpFileId: string | null
   fileName: string
   importedAt: string
-  importedBy: string
+  uploadedBy: string
   rowsRead: number
   rowsInserted: number
   rowsUpdated: number
   rowsSkipped: number
-  completed: boolean
+  // Lines an Aconex append dropped because it already held them. The figure that
+  // tells an operator a re-upload of an overlapping export did nothing.
+  rowsDuplicate: number
+  status: 'Queued' | 'Running' | 'Completed' | 'Failed'
   log: string | null
 }
 
@@ -151,119 +44,12 @@ export interface ProblemDetails {
   errors?: Record<string, string[]>
 }
 
-// ---------------------------------------------------------------- drafts
-
-export type DraftRowState = 'New' | 'Modified' | 'Unchanged' | 'Deleted' | 'Conflict'
-
 export interface PagedResult<T> {
   items: T[]
   page: number
   pageSize: number
   total: number
   totalPages: number
-}
-
-export interface DraftExchange {
-  number: number
-  stage: string | null
-  programmeRef: string | null
-  author: string | null
-  geometrical: string | null
-  nonGeometrical: string | null
-  durationDays: number | null
-  predecessor: string | null
-  exchangeDate: string | null
-}
-
-export interface DraftDocument {
-  id: string
-  projectId: string
-  tidpDraftId: string
-  disciplineId: string
-  folderFileId: string
-  importBatchId: string
-  documentNumber: string
-  title: string
-  extractedFromModel: string | null
-  scopeArea: string | null
-  authoringSoftware: string | null
-  exchangeFormat: string | null
-  scale: string | null
-  deliveryMilestone: string | null
-  packageName: string | null
-  activityId: string | null
-  classificationCode: string | null
-  f01Project: string
-  f02Originator: string
-  f03Contract: string
-  f04DocType: string
-  f05Discipline: string
-  f06Zone: string
-  f07Building: string
-  f08ADrawingType: string
-  f08BLevel: string
-  f08CSequence: string
-  corporateDiscipline: string
-  budgetWeight: number
-  state: DraftRowState
-  liveDocumentId: string | null
-  conflictReason: string | null
-  isDuplicate: boolean
-  updatedAt: string
-  updatedBy: string
-  exchanges: DraftExchange[]
-}
-
-/** The editable half of a draft row — what the full-replace PUT accepts. */
-export type DraftDocumentEdit = Pick<
-  DraftDocument,
-  | 'title' | 'extractedFromModel' | 'scopeArea' | 'authoringSoftware' | 'exchangeFormat'
-  | 'scale' | 'deliveryMilestone' | 'packageName' | 'activityId' | 'classificationCode'
-  | 'f01Project' | 'f02Originator' | 'f03Contract' | 'f04DocType' | 'f05Discipline'
-  | 'f06Zone' | 'f07Building' | 'f08ADrawingType' | 'f08BLevel' | 'f08CSequence'
-  | 'corporateDiscipline'
->
-
-export interface DraftFieldChange {
-  field: string
-  oldValue: string | null
-  newValue: string | null
-}
-
-export interface PromoteRow {
-  documentNumber: string
-  draftId: string | null
-  liveId: string | null
-  title: string | null
-  changes: DraftFieldChange[]
-  reason: string | null
-}
-
-export interface PromoteDiff {
-  folderFileId: string
-  importBatchId: string | null
-  importedAt: string | null
-  added: number
-  modified: number
-  unchanged: number
-  deleted: number
-  conflicts: number
-  maxRows: number
-  addedRows: PromoteRow[]
-  modifiedRows: PromoteRow[]
-  deletedRows: PromoteRow[]
-  conflictRows: PromoteRow[]
-}
-
-export interface PromoteResult {
-  promoteBatchId: string
-  folderFileId: string
-  added: number
-  updated: number
-  deleted: number
-  skipped: number
-  conflicts: number
-  recalculationRequired: boolean
 }
 
 // ---------------------------------------------------------------- reports
@@ -273,7 +59,6 @@ export type BaselineActivityType = 'Submittal' | 'Approval'
 
 export interface TrackerRow {
   documentId: string
-  layer: DataTarget
   documentNumber: string
   type: string
   discipline: string
@@ -391,7 +176,22 @@ export interface DocumentRow {
   budgetWeight: number
   updatedAt: string
   updatedBy: string
-  exchanges: DraftExchange[]
+  isEdited: boolean
+  editedBy: string | null
+  editedAt: string | null
+  exchanges: DocumentExchange[]
+}
+
+export interface DocumentExchange {
+  number: number
+  stage: string | null
+  programmeRef: string | null
+  author: string | null
+  geometrical: string | null
+  nonGeometrical: string | null
+  durationDays: number | null
+  predecessor: string | null
+  exchangeDate: string | null
 }
 
 // ------------------------------------------------------------- workbook view
@@ -416,7 +216,9 @@ export interface WorkbookRow {
   rowId: string
   rowNumber: number
   cells: (string | null)[]
-  state: DraftRowState | null
+  // "Edited" marks a row a person changed, so typed data is never mistaken for
+  // imported data.
+  state: string | null
 }
 
 export interface WorkbookSheet {
@@ -432,11 +234,30 @@ export interface WorkbookSheet {
 export interface Workbook {
   fileId: string
   fileName: string
-  kind: FileKind
-  layer: DataTarget
-  contentSource: FileSource
-  contentModifiedAt: string
-  hasNewerDraft: boolean
+  discipline: string
+  uploadedAt: string
   sheets: string[]
   sheet: WorkbookSheet
+}
+
+// One uploaded TIDP workbook. EditedCount is what the replace dialog shows before it
+// destroys the file's rows, so it is a real number rather than a warning string.
+export interface TidpFile {
+  id: string
+  projectId: string
+  disciplineId: string
+  disciplineCode: string
+  disciplineName: string
+  fileName: string
+  documentReference: string
+  revisionNumber: string
+  rowsRead: number
+  rowsImported: number
+  rowsSkipped: number
+  documentCount: number
+  editedCount: number
+  uploadedBy: string
+  uploadedAt: string
+  status: 'Importing' | 'Imported' | 'Failed'
+  error: string | null
 }

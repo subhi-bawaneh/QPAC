@@ -13,17 +13,10 @@ public interface IDipDbContext
     DbSet<StatusMapping> StatusMappings { get; }
     DbSet<DocumentTypeSerial> DocumentTypeSerials { get; }
     DbSet<BaselineActivity> BaselineActivities { get; }
-    DbSet<Folder> Folders { get; }
-    DbSet<FolderFile> FolderFiles { get; }
-    DbSet<FileBlob> FileBlobs { get; }
-    DbSet<Tidp> Tidps { get; }
+    DbSet<TidpFile> TidpFiles { get; }
     DbSet<Document> Documents { get; }
     DbSet<DataExchange> DataExchanges { get; }
     DbSet<AconexRevision> AconexRevisions { get; }
-    DbSet<TidpDraft> TidpDrafts { get; }
-    DbSet<DocumentDraft> DocumentDrafts { get; }
-    DbSet<DataExchangeDraft> DataExchangeDrafts { get; }
-    DbSet<PromoteBatch> PromoteBatches { get; }
     DbSet<DocumentSnapshot> DocumentSnapshots { get; }
     DbSet<ImportBatch> ImportBatches { get; }
     DbSet<AuditLog> AuditLogs { get; }

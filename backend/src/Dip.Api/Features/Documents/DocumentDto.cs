@@ -2,14 +2,14 @@ using Dip.Domain.Entities;
 
 namespace Dip.Api.Features.Documents;
 
-// Wire shape for a Live document row — the same editable fields as a draft row, minus
-// the draft-only bookkeeping. DocumentNumber is derived from F01..F08C.
+// Wire shape for a document row. DocumentNumber is the sheet's own number as
+// imported; IsEdited marks a row a person has changed, which the grid shows and
+// the replace dialog counts before it destroys them.
 public sealed record DocumentDto(
     Guid Id,
     Guid ProjectId,
-    Guid TidpId,
+    Guid TidpFileId,
     Guid DisciplineId,
-    Guid? FolderFileId,
     string DocumentNumber,
     string Title,
     string? ExtractedFromModel,
@@ -35,16 +35,20 @@ public sealed record DocumentDto(
     decimal BudgetWeight,
     DateTime UpdatedAt,
     string UpdatedBy,
+    bool IsEdited,
+    string? EditedBy,
+    DateTime? EditedAt,
     IReadOnlyList<DocumentExchangeDto> Exchanges)
 {
     public static DocumentDto From(Document d) => new(
-        d.Id, d.ProjectId, d.TidpId, d.DisciplineId, d.FolderFileId,
+        d.Id, d.ProjectId, d.TidpFileId, d.DisciplineId,
         d.DocumentNumber, d.Title, d.ExtractedFromModel, d.ScopeArea, d.AuthoringSoftware,
         d.ExchangeFormat, d.Scale, d.DeliveryMilestone, d.PackageName, d.ActivityId,
         d.ClassificationCode,
         d.F01Project, d.F02Originator, d.F03Contract, d.F04DocType, d.F05Discipline,
         d.F06Zone, d.F07Building, d.F08ADrawingType, d.F08BLevel, d.F08CSequence,
         d.CorporateDiscipline, d.BudgetWeight, d.UpdatedAt, d.UpdatedBy,
+        d.IsEdited, d.EditedBy, d.EditedAt,
         d.Exchanges.OrderBy(e => e.Number).Select(DocumentExchangeDto.From).ToList());
 }
 

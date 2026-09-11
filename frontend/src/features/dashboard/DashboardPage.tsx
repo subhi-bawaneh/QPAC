@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowRight, Cloud, RefreshCw } from 'lucide-react'
+import { AlertTriangle, ArrowRight, FileSpreadsheet, RefreshCw } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { Button } from '@/shared/ui/button'
 import { Card, CardBody, CardHeader, StatTile } from '@/shared/ui/card'
@@ -10,8 +10,7 @@ import { formatDate, formatNumber } from '@/shared/lib/utils'
 import { useAuth } from '@/shared/auth/useAuth'
 import { Permissions } from '@/shared/auth/permissions'
 import type { ImportBatchSummary } from '@/shared/api/types'
-import { collectCompanies } from './companies'
-import { useDriveStatus, useFolderTree } from '@/features/explorer/api'
+import { useTidpFiles } from '@/features/tidps/api'
 import { SCurveChart } from '@/features/reports/SCurveChart'
 import { SpiChart } from '@/features/reports/SpiChart'
 import { ProgressChart } from '@/features/reports/ProgressChart'
@@ -39,9 +38,8 @@ export function DashboardPage() {
   const baseline = useBaselineSummary()
   const evm = useEvmSummary()
   const findings = useControlFindings()
-  const drive = useDriveStatus(QPAC_PROJECT_ID)
+  const tidpFiles = useTidpFiles(QPAC_PROJECT_ID)
   const imports = useRecentImports()
-  const tree = useFolderTree(QPAC_PROJECT_ID)
   const recalculate = useRecalculate()
 
   const summary = corporate.data?.summary
@@ -59,8 +57,6 @@ export function DashboardPage() {
       ]
     : null
   const findingsTotal = findingCounts?.reduce((sum, item) => sum + item.count, 0) ?? null
-
-  const companies = tree.data ? collectCompanies(tree.data) : null
   const stale = corporate.data?.recalculationRequired ?? false
 
   return (
@@ -127,8 +123,8 @@ export function DashboardPage() {
 
         <Card>
           <CardHeader
-            title="Data pipeline"
-            description="Google Drive is polled and every changed workbook is imported on its own."
+            title="Source files"
+            description="Every workbook the register was built from, and what each upload did."
             action={
               <Button variant="outline" size="sm" asChild>
                 <Link to="/tidps">
@@ -140,34 +136,39 @@ export function DashboardPage() {
           />
           <CardBody className="space-y-3 text-sm">
             <div className="flex items-center gap-2">
-              <Cloud className="h-4 w-4 text-muted-foreground" aria-hidden />
-              {drive.data?.isRunning ? (
-                <Badge tone="info">Sync running</Badge>
-              ) : drive.data?.lastRunError ? (
-                <Badge tone="danger">Last sync failed</Badge>
-              ) : drive.data?.lastRunFinishedAt ? (
-                <Badge tone="success">Drive in sync</Badge>
+              <FileSpreadsheet className="h-4 w-4 text-muted-foreground" aria-hidden />
+              {tidpFiles.data?.some((f) => f.status === 'Failed') ? (
+                <Badge tone="danger">An upload failed</Badge>
+              ) : tidpFiles.data?.some((f) => f.status === 'Importing') ? (
+                <Badge tone="info">Importing</Badge>
+              ) : tidpFiles.data?.length ? (
+                <Badge tone="success">All files imported</Badge>
               ) : (
-                <Badge tone="neutral">No sync yet</Badge>
+                <Badge tone="neutral">Nothing uploaded yet</Badge>
               )}
             </div>
             <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-              <dt className="text-muted-foreground">Last sync</dt>
-              <dd>{formatDateTime(drive.data?.lastRunFinishedAt)}</dd>
-              <dt className="text-muted-foreground">Next poll</dt>
-              <dd>{formatDateTime(drive.data?.nextRunAt)}</dd>
-              <dt className="text-muted-foreground">Queued imports</dt>
-              <dd className="tabular-nums">{formatNumber(drive.data?.queuedImports ?? null)}</dd>
-              <dt className="text-muted-foreground">Companies</dt>
+              <dt className="text-muted-foreground">TIDP files</dt>
+              <dd className="tabular-nums">{formatNumber(tidpFiles.data?.length ?? null)}</dd>
+              <dt className="text-muted-foreground">Disciplines covered</dt>
               <dd className="tabular-nums">
-                {companies
-                  ? `${companies.length} (${companies.filter((c) => c.target === 'Live').length} in the system, ${companies.filter((c) => c.target === 'Draft').length} in Drive)`
+                {tidpFiles.data
+                  ? formatNumber(new Set(tidpFiles.data.map((f) => f.disciplineId)).size)
+                  : '—'}
+              </dd>
+              <dt className="text-muted-foreground">Rows imported</dt>
+              <dd className="tabular-nums">
+                {tidpFiles.data
+                  ? formatNumber(tidpFiles.data.reduce((sum, f) => sum + f.documentCount, 0))
+                  : '—'}
+              </dd>
+              <dt className="text-muted-foreground">Edited by hand</dt>
+              <dd className="tabular-nums">
+                {tidpFiles.data
+                  ? formatNumber(tidpFiles.data.reduce((sum, f) => sum + f.editedCount, 0))
                   : '—'}
               </dd>
             </dl>
-            {drive.data?.lastRunError ? (
-              <p className="text-xs text-destructive">{drive.data.lastRunError}</p>
-            ) : null}
 
             <div>
               <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Recent imports</p>
@@ -307,15 +308,9 @@ function ImportRow({ batch }: { batch: ImportBatchSummary }) {
       <span className="min-w-0 truncate" title={batch.fileName}>{batch.fileName}</span>
       <span className="flex shrink-0 items-center gap-2 text-muted-foreground">
         <span className="tabular-nums">{formatNumber(batch.rowsRead)} rows</span>
-        <Badge tone={batch.completed ? 'success' : 'danger'}>{batch.completed ? batch.target : 'Failed'}</Badge>
+        <Badge tone={batch.status === 'Completed' ? 'success' : batch.status === 'Failed' ? 'danger' : 'info'}>{batch.status}</Badge>
       </span>
     </li>
   )
 }
 
-function formatDateTime(value: string | null | undefined) {
-  if (!value) return '—'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return '—'
-  return date.toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
-}

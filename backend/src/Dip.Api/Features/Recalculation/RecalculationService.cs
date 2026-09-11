@@ -14,8 +14,7 @@ public sealed record RecalculationStepResult(
     bool Done);
 
 // Rebuilds DocumentSnapshots — the materialised tracker rows every report and the
-// Tracker grid read — a page at a time over the effective document set
-// (refactor-plan § 3 R8), so both layers are covered by one pass.
+// Tracker grid read — a page at a time over Documents.
 //
 // Still chunked: the worker loops the steps, and the step endpoint stays as the
 // admin fallback. Each step loads only the Aconex revisions belonging to its own
@@ -63,12 +62,11 @@ public sealed class RecalculationService
         var project = await _db.Projects.AsNoTracking().FirstOrDefaultAsync(p => p.Id == projectId, ct)
             ?? throw new KeyNotFoundException($"Project {projectId} not found");
 
-        var effective = await EffectiveDocumentLoader.LoadAsync(_db, projectId, ct);
-        var total = effective.Count;
+        var total = await _db.Documents.CountAsync(d => d.ProjectId == projectId, ct);
         var chunk = Math.Clamp(take, 1, MaxChunkSize);
 
         // Ordered by row id so paging is stable across steps.
-        var page = effective.OrderBy(d => d.RowId).Skip(offset).Take(chunk).ToList();
+        var page = await LoadPageAsync(projectId, offset, chunk, ct);
         if (page.Count == 0)
         {
             return new RecalculationStepResult(0, total, offset, Done: true);
@@ -101,36 +99,43 @@ public sealed class RecalculationService
         var project = await _db.Projects.AsNoTracking().FirstOrDefaultAsync(p => p.Id == projectId, ct)
             ?? throw new KeyNotFoundException($"Project {projectId} not found");
 
-        var effective = await EffectiveDocumentLoader.LoadAsync(_db, projectId, ct);
-        var ordered = effective.OrderBy(d => d.RowId).ToList();
+        var total = await _db.Documents.CountAsync(d => d.ProjectId == projectId, ct);
 
-        for (var offset = 0; offset < ordered.Count; offset += DefaultChunkSize)
+        var done = 0;
+        for (var offset = 0; offset < total; offset += DefaultChunkSize)
         {
-            var page = ordered.Skip(offset).Take(DefaultChunkSize).ToList();
+            var page = await LoadPageAsync(projectId, offset, DefaultChunkSize, ct);
+            if (page.Count == 0) break;
             await WritePageAsync(projectId, project, page, ct);
+            done += page.Count;
         }
 
-        var keep = ordered.Select(d => d.RowId).ToHashSet();
-        var stale = await _db.DocumentSnapshots
-            .Where(s => s.ProjectId == projectId)
-            .Select(s => s.DocumentId)
-            .ToListAsync(ct);
-        var drop = stale.Where(id => !keep.Contains(id)).ToList();
-        if (drop.Count > 0)
-        {
-            await _db.DocumentSnapshots
-                .Where(s => s.ProjectId == projectId && drop.Contains(s.DocumentId))
-                .ExecuteDeleteAsync(ct);
-        }
+        // A snapshot whose document is gone is deleted by the foreign key now, so the
+        // only stale rows left are ones an interrupted earlier run wrote.
+        await _db.DocumentSnapshots
+            .Where(s => s.ProjectId == projectId
+                && !_db.Documents.Any(d => d.Id == s.DocumentId))
+            .ExecuteDeleteAsync(ct);
 
-        await _notifier.RecalculationFinishedAsync(projectId, ordered.Count);
-        return ordered.Count;
+        await _notifier.RecalculationFinishedAsync(projectId, done);
+        return done;
     }
 
+    private async Task<List<Document>> LoadPageAsync(
+        Guid projectId, int offset, int take, CancellationToken ct) =>
+        await _db.Documents
+            .AsNoTracking()
+            .Include(d => d.Exchanges)
+            .Where(d => d.ProjectId == projectId)
+            .OrderBy(d => d.Id)
+            .Skip(offset)
+            .Take(take)
+            .ToListAsync(ct);
+
     private async Task WritePageAsync(
-        Guid projectId, Project project, IReadOnlyList<EffectiveDocument> page, CancellationToken ct)
+        Guid projectId, Project project, IReadOnlyList<Document> page, CancellationToken ct)
     {
-        var documents = page.Select(d => d.Document).ToList();
+        var documents = page.ToList();
         var numbers = documents
             .Select(d => d.DocumentNumber.ToUpperInvariant())
             .Distinct(StringComparer.Ordinal)
@@ -155,12 +160,12 @@ public sealed class RecalculationService
 
         var rows = TrackerEngine.Compute(documents, revisions, baseline, statusMappings, project);
 
-        var rowIds = page.Select(d => d.RowId).ToList();
+        var rowIds = page.Select(d => d.Id).ToList();
         var existing = await _db.DocumentSnapshots
             .Where(s => rowIds.Contains(s.DocumentId))
             .ToListAsync(ct);
         var existingByRow = existing.ToDictionary(s => s.DocumentId);
-        var sourceByRow = page.ToDictionary(d => d.RowId);
+        var sourceByRow = page.ToDictionary(d => d.Id);
 
         var computedAt = DateTime.UtcNow;
         foreach (var row in rows)
@@ -182,11 +187,9 @@ public sealed class RecalculationService
 
     // Copies the tracker's display columns off the source row so the grid can page
     // over DocumentSnapshots alone (decision D11).
-    private static void Describe(DocumentSnapshot snapshot, EffectiveDocument source)
+    private static void Describe(DocumentSnapshot snapshot, Document document)
     {
-        var document = source.Document;
-        snapshot.Layer = source.Layer;
-        snapshot.FolderFileId = source.FolderFileId;
+        snapshot.TidpFileId = document.TidpFileId;
         snapshot.DocumentNumber = document.DocumentNumber;
         snapshot.Title = document.Title;
         snapshot.Type = document.F04DocType;
@@ -203,8 +206,7 @@ public sealed class RecalculationService
     private static void Apply(DocumentSnapshot target, DocumentSnapshot computed)
     {
         target.ComputedAt = computed.ComputedAt;
-        target.Layer = computed.Layer;
-        target.FolderFileId = computed.FolderFileId;
+        target.TidpFileId = computed.TidpFileId;
         target.DocumentNumber = computed.DocumentNumber;
         target.Title = computed.Title;
         target.Type = computed.Type;

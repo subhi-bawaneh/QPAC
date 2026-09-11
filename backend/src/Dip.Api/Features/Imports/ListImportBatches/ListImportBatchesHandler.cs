@@ -17,7 +17,7 @@ public sealed class ListImportBatchesHandler : IQueryHandler<ListImportBatchesQu
             .Where(b => b.ProjectId == query.ProjectId);
 
         if (query.Kind is not null) q = q.Where(b => b.Kind == query.Kind.Value);
-        if (query.FolderFileId is not null) q = q.Where(b => b.FolderFileId == query.FolderFileId.Value);
+        if (query.TidpFileId is not null) q = q.Where(b => b.TidpFileId == query.TidpFileId.Value);
 
         var take = Math.Clamp(query.Take, 1, 500);
         var rows = await q
@@ -25,10 +25,6 @@ public sealed class ListImportBatchesHandler : IQueryHandler<ListImportBatchesQu
             .Take(take)
             .ToListAsync(ct);
 
-        return rows.Select(b => new ImportBatchSummary(
-            b.Id, b.ProjectId, b.Kind, b.Target,
-            b.FolderFileId, b.FileName, b.ImportedAt, b.ImportedBy,
-            b.RowsRead, b.RowsInserted, b.RowsUpdated, b.RowsSkipped,
-            b.Completed, b.Log)).ToList();
+        return rows.Select(ImportBatchSummary.From).ToList();
     }
 }

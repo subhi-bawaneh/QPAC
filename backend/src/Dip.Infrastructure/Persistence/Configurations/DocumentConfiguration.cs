@@ -4,26 +4,30 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace Dip.Infrastructure.Persistence.Configurations;
 
-internal sealed class TidpConfiguration : IEntityTypeConfiguration<Tidp>
+internal sealed class TidpFileConfiguration : IEntityTypeConfiguration<TidpFile>
 {
-    public void Configure(EntityTypeBuilder<Tidp> b)
+    public void Configure(EntityTypeBuilder<TidpFile> b)
     {
-        b.ToTable("Tidps");
+        b.ToTable("TidpFiles");
         b.HasKey(x => x.Id);
         b.Property(x => x.DocumentReference).HasMaxLength(200).IsRequired();
         b.Property(x => x.RevisionNumber).HasMaxLength(10).IsRequired();
-        b.Property(x => x.SourceFileName).HasMaxLength(300);
+        b.Property(x => x.FileName).HasMaxLength(500).IsRequired();
+        b.Property(x => x.UploadedBy).HasMaxLength(200).IsRequired();
+        b.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
+        b.Property(x => x.Error).HasMaxLength(2000);
         b.Property(x => x.DateCreated).HasColumnType("timestamp without time zone");
         b.Property(x => x.DateLastUpdated).HasColumnType("timestamp without time zone");
+        b.Property(x => x.UploadedAt).HasColumnType("timestamp without time zone");
         b.Property(x => x.CreatedAt).HasColumnType("timestamp without time zone");
         b.Property(x => x.UpdatedAt).HasColumnType("timestamp without time zone");
         b.Property(x => x.CreatedBy).HasMaxLength(100);
         b.Property(x => x.UpdatedBy).HasMaxLength(100);
         b.Property(x => x.RowVersion).IsConcurrencyToken();
         b.HasIndex(x => new { x.ProjectId, x.DisciplineId });
+        b.HasIndex(x => new { x.ProjectId, x.UploadedAt });
         b.HasOne(x => x.Project).WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
         b.HasOne(x => x.Discipline).WithMany().HasForeignKey(x => x.DisciplineId).OnDelete(DeleteBehavior.Restrict);
-        b.HasOne(x => x.FolderFile).WithMany().HasForeignKey(x => x.FolderFileId).OnDelete(DeleteBehavior.SetNull);
     }
 }
 
@@ -58,6 +62,9 @@ internal sealed class DocumentConfiguration : IEntityTypeConfiguration<Document>
         b.Property(x => x.CorporateDiscipline).HasMaxLength(100).IsRequired();
         b.Property(x => x.BudgetWeight).HasPrecision(10, 4);
 
+        b.Property(x => x.EditedBy).HasMaxLength(200);
+        b.Property(x => x.EditedAt).HasColumnType("timestamp without time zone");
+
         b.Property(x => x.DeliveryMilestone).HasColumnType("timestamp without time zone");
         b.Property(x => x.CreatedAt).HasColumnType("timestamp without time zone");
         b.Property(x => x.UpdatedAt).HasColumnType("timestamp without time zone");
@@ -68,11 +75,11 @@ internal sealed class DocumentConfiguration : IEntityTypeConfiguration<Document>
         b.HasIndex(x => new { x.ProjectId, x.DocumentNumber }).IsUnique();
         b.HasIndex(x => new { x.ProjectId, x.CorporateDiscipline });
         b.HasIndex(x => new { x.ProjectId, x.ActivityId });
+        b.HasIndex(x => new { x.ProjectId, x.TidpFileId });
 
         b.HasOne(x => x.Project).WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
-        b.HasOne(x => x.Tidp).WithMany(x => x!.Documents).HasForeignKey(x => x.TidpId).OnDelete(DeleteBehavior.Cascade);
+        b.HasOne(x => x.TidpFile).WithMany(x => x!.Documents).HasForeignKey(x => x.TidpFileId).OnDelete(DeleteBehavior.Cascade);
         b.HasOne(x => x.Discipline).WithMany().HasForeignKey(x => x.DisciplineId).OnDelete(DeleteBehavior.Restrict);
-        b.HasOne(x => x.FolderFile).WithMany().HasForeignKey(x => x.FolderFileId).OnDelete(DeleteBehavior.SetNull);
     }
 }
 

@@ -27,10 +27,8 @@ export function WorkbookPage() {
 
   const workbook = useWorkbook(fileId, sheet)
   const first = workbook.data?.pages[0]
-  const layer = first?.layer ?? 'Live'
-
-  const canEdit = layer === 'Draft' ? can(Permissions.draftsEdit) : can(Permissions.documentsEditLive)
-  const save = useSaveRow(fileId, sheet, layer)
+  const canEdit = can(Permissions.documentsEdit)
+  const save = useSaveRow(fileId, sheet)
 
   const rows: WorkbookRow[] = useMemo(
     () => workbook.data?.pages.flatMap((page) => page.sheet.rows) ?? [],
@@ -74,16 +72,11 @@ export function WorkbookPage() {
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="truncate text-lg font-semibold">{first?.fileName ?? 'Workbook'}</h1>
-            <Badge tone={layer === 'Draft' ? 'warning' : 'info'}>
-              {layer === 'Draft' ? 'DB1 Draft' : 'DB2 Live'}
-            </Badge>
-            {first?.hasNewerDraft ? <Badge tone="warning">Drive has newer data</Badge> : null}
+            {first?.discipline ? <Badge tone="info">{first.discipline}</Badge> : null}
           </div>
           {first ? (
             <p className="mt-1 text-sm text-muted-foreground">
-              {first.contentSource === 'Drive' ? 'From Google Drive' : 'Uploaded'}
-              {' · '}
-              {formatDate(first.contentModifiedAt)}
+              Uploaded {formatDate(first.uploadedAt)}
             </p>
           ) : null}
         </div>
@@ -146,7 +139,7 @@ export function WorkbookPage() {
         <StatusBar
           totalRows={first?.sheet.totalRows ?? 0}
           loadedRows={rows.length}
-          layer={layer}
+          discipline={first?.discipline ?? ''}
           lastImportedAt={null}
           loadingMore={workbook.isFetchingNextPage}
         />

@@ -5,9 +5,12 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Dip.Api.Workers;
 
-// Consumes WorkQueue one item at a time for the life of the process. On startup it
-// re-queues every file that was never imported (or went stale), so a restart in the
-// middle of a Drive poll finishes the job rather than losing it.
+// Consumes WorkQueue one item at a time for the life of the process.
+//
+// On startup it sweeps rather than re-queues: an upload's bytes live only in the
+// queue, so a batch left Queued or Running by a restart can never be finished and is
+// marked Failed with a message telling the operator to upload again. Pretending it is
+// still pending would leave a row that never completes and never explains itself.
 public sealed class ImportWorker : BackgroundService
 {
     private readonly WorkQueue _queue;
@@ -58,8 +61,9 @@ public sealed class ImportWorker : BackgroundService
         using var scope = _scopes.CreateScope();
         switch (item.Kind)
         {
-            case WorkItemKind.ImportFile:
-                await scope.ServiceProvider.GetRequiredService<FileImportService>().ImportAsync(item.Id, ct);
+            case WorkItemKind.ImportBatch:
+                // Stage 3 wires ImportService in here; until then nothing enqueues one.
+                _logger.LogWarning("No import service is registered for batch {Id}", item.Id);
                 break;
 
             case WorkItemKind.Recalculate:
@@ -76,20 +80,31 @@ public sealed class ImportWorker : BackgroundService
         {
             using var scope = _scopes.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<DipDbContext>();
-            var pending = await db.FolderFiles
-                .AsNoTracking()
-                .Where(f => !f.IsDeleted
-                    && (f.State == ImportState.NotImported || f.State == ImportState.Outdated))
-                .Select(f => f.Id)
-                .ToListAsync(ct);
 
-            foreach (var id in pending)
+            // An unfinished batch cannot be resumed: its bytes went with the queue.
+            var swept = await db.ImportBatches
+                .Where(b => b.Status == ImportBatchStatus.Queued || b.Status == ImportBatchStatus.Running)
+                .ExecuteUpdateAsync(
+                    u => u.SetProperty(b => b.Status, ImportBatchStatus.Failed)
+                          .SetProperty(b => b.Log, "{\"warnings\":[],\"error\":\"interrupted, upload again\"}"),
+                    ct);
+
+            var sweptFiles = await db.TidpFiles
+                .Where(t => t.Status == TidpFileStatus.Importing)
+                .ExecuteUpdateAsync(
+                    u => u.SetProperty(t => t.Status, TidpFileStatus.Failed)
+                          .SetProperty(t => t.Error, "interrupted, upload again"),
+                    ct);
+
+            if (swept > 0 || sweptFiles > 0)
             {
-                _queue.EnqueueImport(id);
+                _logger.LogWarning(
+                    "Swept {Batches} interrupted import batch(es) and {Files} TIDP file(s) to Failed",
+                    swept, sweptFiles);
             }
 
             // Snapshots may be behind whatever changed while the process was down
-            // (a target flipped by hand, an interrupted run), and a recalculation
+            // (an interrupted run), and a recalculation
             // over an already-current set is cheap, so every project gets one.
             var projects = await db.Projects.AsNoTracking().Select(p => p.Id).ToListAsync(ct);
             foreach (var projectId in projects)
@@ -100,7 +115,7 @@ public sealed class ImportWorker : BackgroundService
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             // A database that is not up yet must not crash the host.
-            _logger.LogWarning(ex, "Could not re-queue pending imports at startup");
+            _logger.LogWarning(ex, "Could not sweep interrupted imports at startup");
         }
     }
 }

@@ -18,9 +18,11 @@ public class PermissionsSanityTests
         Permissions.All.Should().Contain(new[]
         {
             Permissions.ImportRun,
-            Permissions.DraftsPromote,
+            Permissions.FilesManage,
+            Permissions.DocumentsEdit,
             Permissions.ReportsView,
             Permissions.UsersManage,
         });
     }
+
 }

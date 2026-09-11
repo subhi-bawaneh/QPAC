@@ -1,4 +1,3 @@
-using Dip.Api.Features.Drafts.UpdateDraftDocument;
 using Dip.Application.Abstractions;
 using Dip.Application.Authorization;
 
@@ -7,7 +6,7 @@ namespace Dip.Api.Features.Documents.UpdateDocument;
 // The Live-layer twin of UpdateDraftDocumentCommand: same editable fields, same
 // derived DocumentNumber, but it writes the Live tables and leaves an AuditLog row
 // per changed field.
-[Permission(Permissions.DocumentsEditLive)]
+[Permission(Permissions.DocumentsEdit)]
 public sealed record UpdateDocumentCommand(
     Guid Id,
     string Title,
@@ -31,4 +30,4 @@ public sealed record UpdateDocumentCommand(
     string F08BLevel,
     string F08CSequence,
     string CorporateDiscipline,
-    IReadOnlyList<DraftExchangeInput>? Exchanges = null) : ICommand<DocumentDto>;
+    IReadOnlyList<ExchangeInput>? Exchanges = null) : ICommand<DocumentDto>;

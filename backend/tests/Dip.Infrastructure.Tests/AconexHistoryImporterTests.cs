@@ -35,10 +35,9 @@ public class AconexHistoryImporterTests : IClassFixture<ImporterFixture>
         {
             ProjectId = _fixture.QpacProjectId,
             Kind = ImportKind.AconexHistory,
-            Target = DataTarget.Live,
             FileName = "MIDP.xlsx",
             ImportedAt = DateTime.UtcNow,
-            ImportedBy = "test",
+            UploadedBy = "test",
         };
         db.ImportBatches.Add(batch);
         await db.SaveChangesAsync();
@@ -132,10 +131,9 @@ public class AconexHistoryImporterTests : IClassFixture<ImporterFixture>
         {
             ProjectId = _fixture.QpacProjectId,
             Kind = ImportKind.AconexHistory,
-            Target = DataTarget.Live,
             FileName = "MIDP.xlsx",
             ImportedAt = DateTime.UtcNow,
-            ImportedBy = "test",
+            UploadedBy = "test",
         };
         db.ImportBatches.Add(batch);
         await db.SaveChangesAsync();

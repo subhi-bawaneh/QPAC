@@ -4,13 +4,10 @@ import type { SyncEventName } from './syncHub'
 // Which cached queries a hub event makes stale. Kept as data so the mapping is
 // testable without a live connection.
 export const invalidationMap: Record<SyncEventName, string[]> = {
-  syncStarted: [],
-  folderSynced: ['folders'],
-  syncFinished: ['folders', 'drive-status'],
-  fileQueued: ['folders'],
-  fileImportStarted: ['folders'],
-  fileImported: ['folders', 'imports', 'workbook', 'drafts'],
-  fileFailed: ['folders', 'imports'],
+  importQueued: ['imports'],
+  importStarted: ['imports'],
+  importFinished: ['imports', 'tidp-files', 'workbook', 'documents'],
+  importFailed: ['imports', 'tidp-files'],
   recalculationFinished: ['tracker', 'summary', 'findings', 'documents'],
 }
 

@@ -140,21 +140,8 @@ public class ReportsFlowTests
 
     private async Task<int> ImportTidpLiveAsync(HttpClient admin, string sampleFile)
     {
-        var folderResp = await admin.PostAsJsonAsync("/api/folders", new
-        {
-            projectId = QpacProjectId,
-            parentId = (Guid?)null,
-            name = $"ReportsE2E-{Guid.NewGuid():N}",
-        });
-        folderResp.EnsureSuccessStatusCode();
-        var folderId = Guid.Parse((await folderResp.Content.ReadAsStringAsync()).Trim('"'));
-
-        var file = await TestHelpers.ImportedAsync(admin, folderId, sampleFile);
-        var batches = await GetJsonAsync(
-            admin, $"/api/projects/{QpacProjectId}/imports?kind=Tidp&take=20");
-        var batch = batches.EnumerateArray()
-            .First(b => b.GetProperty("folderFileId").GetGuid() == file.GetProperty("id").GetGuid());
-        return batch.GetProperty("rowsRead").GetInt32();
+        var (_, result) = await TestHelpers.ImportTidpAsync(_factory, QpacProjectId, sampleFile);
+        return result.RowsRead;
     }
 
     private static async Task<JsonElement> GetJsonAsync(HttpClient client, string url)

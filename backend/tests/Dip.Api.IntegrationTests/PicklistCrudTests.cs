@@ -179,6 +179,8 @@ public class PicklistCrudTests
             .GetArrayLength().Should().Be(23);
     }
 
+    // A soft-deleted code is an operator's decision. Stage 3 puts this behind the
+    // /lists upload route; the guarantee is the importer's, so it is tested there.
     [Fact]
     public async Task ReImportOfThePicklistsWorkbook_SkipsDeletedCodes()
     {
@@ -186,33 +188,30 @@ public class PicklistCrudTests
 
         var admin = await TestHelpers.AuthedAdminAsync(_factory);
         var projectId = await TestHelpers.NewProjectAsync(_factory, "Picklist re-import");
-        var folderId = await TestHelpers.CreateFolderAsync(
-            admin, $"PicklistReimport-{Guid.NewGuid():N}", projectId: projectId);
 
-        await TestHelpers.ImportedAsync(admin, folderId, "PickLists.xlsx");
+        await ImportPicklistsAsync(projectId);
 
         var authors = await AuthorsAsync(admin, projectId, includeDeleted: false);
         var tke = authors.Single(a => a.GetProperty("code").GetString() == "TKE");
         var tkeId = tke.GetProperty("id").GetGuid();
         (await admin.DeleteAsync($"/api/picklists/{tkeId}")).EnsureSuccessStatusCode();
 
-        // Uploading the same workbook again re-imports it; the deleted code stays gone.
-        var response = await TestHelpers.UploadAsync(admin, folderId, "PickLists.xlsx");
-        response.StatusCode.Should().Be(HttpStatusCode.Accepted);
-        var fileId = (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("fileId").GetGuid();
-        await TestHelpers.WaitForImportAsync(admin, folderId, fileId);
+        var result = await ImportPicklistsAsync(projectId);
 
         (await AuthorCodesAsync(admin, projectId, includeDeleted: false))
             .Should().NotContain("TKE", "a re-import must not resurrect a deleted code");
 
+        result.RowsSkipped.Should().Be(1);
+        result.Warnings.Should().Contain(w => w.Contains("TKE"));
+    }
+
+    private async Task<Dip.Infrastructure.Importers.ImportResult> ImportPicklistsAsync(Guid projectId)
+    {
         using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<DipDbContext>();
-        var batch = await db.ImportBatches.AsNoTracking()
-            .Where(b => b.FolderFileId == fileId && b.Completed)
-            .OrderByDescending(b => b.ImportedAt)
-            .FirstAsync();
-        batch.RowsSkipped.Should().Be(1);
-        batch.Log.Should().Contain("TKE");
+        var importer = scope.ServiceProvider
+            .GetRequiredService<Dip.Infrastructure.Importers.PicklistImporter>();
+        await using var stream = File.OpenRead(TestHelpers.SamplePath("PickLists.xlsx"));
+        return await importer.ImportAsync(projectId, stream, CancellationToken.None);
     }
 
     [Fact]

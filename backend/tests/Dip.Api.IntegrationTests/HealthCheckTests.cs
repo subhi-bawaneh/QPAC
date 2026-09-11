@@ -45,15 +45,10 @@ public class HealthCheckTests
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         var checks = body.GetProperty("checks").EnumerateArray().ToList();
 
-        checks.Should().HaveCount(2);
+        checks.Should().HaveCount(1, "Drive is gone, so the database is the only dependency");
 
         var database = checks.Single(c => c.GetProperty("name").GetString() == "database");
         database.GetProperty("status").GetString().Should().Be("Healthy");
-
-        var drive = checks.Single(c => c.GetProperty("name").GetString() == "drive");
-        drive.GetProperty("status").GetString().Should().Be("Degraded",
-            "Drive is not configured in tests, which must not read as broken");
-        drive.GetProperty("description").GetString().Should().Contain("not configured");
     }
 
     [Fact]

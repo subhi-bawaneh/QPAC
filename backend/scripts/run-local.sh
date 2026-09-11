@@ -2,8 +2,6 @@
 # Runs the API against the local SQLite database — never Neon.
 #
 # Everything it needs is created on first run under src/Dip.Api/App_Data (git-ignored):
-# the database file, a JWT key and a SuperAdmin password. The Qpac_1/ folder at the top
-# of the repository stands in for Google Drive. See docs/local-dev.md.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."

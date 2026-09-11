@@ -2,17 +2,15 @@ using Dip.Domain.Enums;
 
 namespace Dip.Domain.Entities;
 
-// The materialised tracker row (decision D11): one per row of the effective
-// document set, carrying both the display columns copied from the source row and
-// the TrackerEngine output. Keyed by the source row's id — a Document.Id when
-// Layer = Live, a DocumentDraft.Id when Layer = Draft — with no foreign key,
-// because the two layers live in different tables. Rebuilt by RecalculationService.
+// The materialised tracker row: one per Document, carrying the display columns
+// copied from the source row and the TrackerEngine output. With the Draft layer
+// gone the row can only come from Documents, so the foreign key is back and a
+// deleted document takes its snapshot with it.
 public class DocumentSnapshot
 {
     public Guid DocumentId { get; set; }
     public Guid ProjectId { get; set; }
-    public DataTarget Layer { get; set; }
-    public Guid? FolderFileId { get; set; }
+    public Guid TidpFileId { get; set; }
     public DateTime ComputedAt { get; set; }
 
     // Display columns — copied so the Tracker grid never joins the source tables.
@@ -43,4 +41,5 @@ public class DocumentSnapshot
     public DateTime? ActualFinish { get; set; }
 
     public Project? Project { get; set; }
+    public Document? Document { get; set; }
 }

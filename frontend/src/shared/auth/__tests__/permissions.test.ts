@@ -19,8 +19,7 @@ describe('hasPermission', () => {
     expect(Object.values(Permissions)).toEqual(
       expect.arrayContaining([
         'users.manage', 'roles.manage', 'system.settings', 'project.settings',
-        'folders.manage', 'folders.assignTarget', 'drive.sync', 'import.run',
-        'drafts.edit', 'drafts.promote', 'documents.editLive',
+        'import.run', 'files.manage', 'documents.edit',
         'reports.view', 'reports.export', 'lists.manage', 'baseline.manage',
       ]),
     )

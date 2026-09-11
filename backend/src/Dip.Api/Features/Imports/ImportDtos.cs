@@ -3,24 +3,27 @@ using Dip.Domain.Enums;
 
 namespace Dip.Api.Features.Imports;
 
+// One upload as the dashboard and the Aconex page render it. RowsDuplicate is the
+// number an Aconex append dropped because it already held the line, which is the
+// figure that tells an operator a re-upload of an overlapping export did nothing.
 public sealed record ImportBatchSummary(
     Guid Id,
     Guid ProjectId,
     ImportKind Kind,
-    DataTarget Target,
-    Guid? FolderFileId,
+    Guid? TidpFileId,
     string FileName,
     DateTime ImportedAt,
-    string ImportedBy,
+    string UploadedBy,
     int RowsRead,
     int RowsInserted,
     int RowsUpdated,
     int RowsSkipped,
-    bool Completed,
+    int RowsDuplicate,
+    ImportBatchStatus Status,
     string? Log)
 {
     public static ImportBatchSummary From(ImportBatch b) => new(
-        b.Id, b.ProjectId, b.Kind, b.Target, b.FolderFileId, b.FileName,
-        b.ImportedAt, b.ImportedBy, b.RowsRead, b.RowsInserted, b.RowsUpdated,
-        b.RowsSkipped, b.Completed, b.Log);
+        b.Id, b.ProjectId, b.Kind, b.TidpFileId, b.FileName,
+        b.ImportedAt, b.UploadedBy, b.RowsRead, b.RowsInserted, b.RowsUpdated,
+        b.RowsSkipped, b.RowsDuplicate, b.Status, b.Log);
 }

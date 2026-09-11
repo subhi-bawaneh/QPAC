@@ -1,5 +1,4 @@
 using Dip.Application.Abstractions;
-using Dip.Infrastructure.Drive;
 using Dip.Infrastructure.Identity;
 using Dip.Infrastructure.Persistence;
 using Dip.Infrastructure.Seeding;
@@ -64,26 +63,6 @@ public static class DependencyInjection
         services.Configure<JwtOptions>(configuration.GetSection(JwtOptions.SectionName));
         services.AddSingleton<IJwtTokenService, JwtTokenService>();
 
-        services.Configure<GoogleDriveOptions>(configuration.GetSection(GoogleDriveOptions.SectionName));
-        var mirrorPath = configuration["GoogleDrive:LocalMirrorPath"];
-        var isDevelopment = string.Equals(
-            configuration["ASPNETCORE_ENVIRONMENT"] ?? "Development",
-            "Development", StringComparison.OrdinalIgnoreCase);
-        if (!string.IsNullOrWhiteSpace(mirrorPath) && isDevelopment)
-        {
-            // A checked-out copy of the Drive tree stands in for Google on a developer
-            // machine; "." names the mirror root the way a folder id names the real root.
-            services.PostConfigure<GoogleDriveOptions>(o =>
-            {
-                if (string.IsNullOrWhiteSpace(o.RootFolderId)) o.RootFolderId = ".";
-            });
-            services.AddSingleton<IDriveClient, LocalMirrorDriveClient>();
-        }
-        else
-        {
-            services.AddHttpClient<IDriveClient, ApiKeyDriveClient>();
-        }
-
         services.AddSingleton<IExcelReader, Excel.ClosedXmlReader>();
         services.AddSingleton<IReportExporter, Excel.ClosedXmlReportExporter>();
 
@@ -92,7 +71,6 @@ public static class DependencyInjection
         services.AddScoped<Importers.BaselineImporter>();
         services.AddScoped<Importers.ListsImporter>();
         services.AddScoped<Importers.TidpImporter>();
-        services.AddScoped<Importers.MidpImporter>();
         services.AddScoped<Importers.AconexHistoryImporter>();
 
         services.AddScoped<IdentitySeeder>();

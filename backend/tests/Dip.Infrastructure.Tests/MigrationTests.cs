@@ -99,7 +99,7 @@ public class MigrationTests : IClassFixture<PostgresFixture>
             .Where(c => c.RoleId == editor.Id && c.ClaimType == "permission")
             .Select(c => c.ClaimValue)
             .ToListAsync();
-        editorClaims.Should().Contain(Permissions.DraftsEdit);
+        editorClaims.Should().Contain(Permissions.DocumentsEdit);
         editorClaims.Should().NotContain(Permissions.ImportRun);
 
         // SuperAdmin user exists and is in the SuperAdmin role.

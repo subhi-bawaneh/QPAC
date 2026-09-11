@@ -68,11 +68,6 @@ Everything is read at **startup** — changing any of these needs a restart.
 | `Cors__Origins` | yes | Comma-separated frontend origins |
 | `Seed__AdminEmail` | first boot | Email of the SuperAdmin created on an empty database |
 | `Seed__AdminPassword` | first boot | Its password |
-| `GoogleDrive__ApiKey` | optional | Only needed for Drive sync |
-| `GoogleDrive__RootFolderId` | optional | The folder sync starts from; unset disables polling entirely |
-| `GoogleDrive__LocalMirrorPath` | never in production | Development only: a local copy of the Drive tree served instead of the Google API (`LocalMirrorDriveClient`); ignored outside `ASPNETCORE_ENVIRONMENT=Development` |
-| `GoogleDrive__PollHours` | optional | How often `DriveSyncWorker` polls Drive (default `5`; `0` disables the timer and leaves "Sync now") |
-| `GoogleDrive__StartupDelaySeconds` | optional | Grace period before the first poll (default `30`) |
 | `Cors__PreviewOriginSuffix` | optional | e.g. `.vercel.app`, to allow preview deployments |
 | `ASPNETCORE_ENVIRONMENT` | yes | `Production` |
 
@@ -122,7 +117,6 @@ The client uses an **API key**, not OAuth — two unauthenticated REST calls wit
    the setting. If policy forbids link-sharing, this approach cannot work at all —
    that is what a `ServiceAccountDriveClient` behind the same `IDriveClient` is for.
 
-`GoogleDrive__RootFolderId` is the id from the folder URL
 (`drive.google.com/drive/folders/<THIS>`). Shared Drives work: the client sends
 `supportsAllDrives=true`.
 
