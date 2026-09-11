@@ -1,4 +1,5 @@
 using Dip.Api.Features.Lists.GetPicklists;
+using Dip.Api.Common;
 using Dip.Application.Abstractions;
 using Dip.Application.Behaviors;
 using Dip.Domain.Entities;
@@ -11,8 +12,13 @@ public sealed class CreatePicklistItemHandler
     : ICommandHandler<CreatePicklistItemCommand, CreatePicklistItemResult>
 {
     private readonly DipDbContext _db;
+    private readonly ICurrentUser _currentUser;
 
-    public CreatePicklistItemHandler(DipDbContext db) => _db = db;
+    public CreatePicklistItemHandler(DipDbContext db, ICurrentUser currentUser)
+    {
+        _db = db;
+        _currentUser = currentUser;
+    }
 
     public async Task<CreatePicklistItemResult> Handle(
         CreatePicklistItemCommand command, CancellationToken ct)
@@ -36,6 +42,9 @@ public sealed class CreatePicklistItemHandler
             existing.DeletedAt = null;
             existing.Description = command.Description.Trim();
             existing.SortOrder = sortOrder;
+            Audited.MarkEdited(existing, By, DateTime.UtcNow);
+            Audited.Row(_db, existing.ProjectId, nameof(PicklistItem), existing.Id,
+                Audited.Restore, null, existing.Code, By, DateTime.UtcNow);
             return new CreatePicklistItemResult(PicklistItemDto.From(existing), Restored: true);
         }
 
@@ -47,9 +56,14 @@ public sealed class CreatePicklistItemHandler
             Description = command.Description.Trim(),
             SortOrder = sortOrder,
         };
+        Audited.MarkEdited(item, By, DateTime.UtcNow);
         _db.PicklistItems.Add(item);
+        Audited.Row(_db, item.ProjectId, nameof(PicklistItem), item.Id,
+            Audited.Create, null, item.Code, By, DateTime.UtcNow);
         return new CreatePicklistItemResult(PicklistItemDto.From(item), Restored: false);
     }
+
+    private string By => _currentUser.UserName ?? "system";
 
     private async Task<int> NextSortOrderAsync(CreatePicklistItemCommand command, CancellationToken ct)
     {

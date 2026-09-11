@@ -156,4 +156,82 @@ public class TidpImporterTests : IClassFixture<ImporterFixture>
             (await db.Documents.CountAsync(d => d.TidpFileId == firstFileId)).Should().BeGreaterThan(50);
         }
     }
+
+    // A row carrying another project's code is an Excel autofill accident, not a
+    // document: in the sample MIDP, rows 8034 onward increment the project code, the
+    // contract, the zone, the building and the sequence together under one repeated
+    // title. Rejected with the offending value so it can be found and fixed, and
+    // counted so the import does not quietly lose them.
+    [Fact]
+    public async Task RejectsRowsWhoseProjectCodeIsNotTheProjects()
+    {
+        if (!_fixture.IsAvailable) return;
+
+        // Expected count derived from the sheet, never pasted: CLAUDE.md rule 8.
+        var expected = await ForeignProjectRowsAsync("TIDP-STL.xlsx");
+
+        Guid fileId;
+        using (var scope = _fixture.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DipDbContext>();
+            await ResetTablesAsync(db);
+            fileId = await NewFileAsync(db, "TIDP-STL.xlsx");
+
+            // Rename the project so every row in the sample reads as foreign.
+            await db.Projects.Where(p => p.Id == _fixture.QpacProjectId)
+                .ExecuteUpdateAsync(u => u.SetProperty(p => p.Code, "OTHER99"));
+        }
+
+        try
+        {
+            ImportResult result;
+            using (var scope = _fixture.CreateScope())
+            {
+                result = await scope.ServiceProvider.GetRequiredService<TidpImporter>().ImportAsync(
+                    _fixture.QpacProjectId, SampleFiles.Open("TIDP-STL.xlsx"),
+                    fileId, "test", CancellationToken.None);
+            }
+
+            result.RowsSkipped.Should().Be(result.RowsRead,
+                "every row of the sample carries QF01012, which is not this project's code");
+            result.RowsInserted.Should().Be(0);
+            result.Warnings.Should().Contain(w => w.Contains("PROJECT is QF01012, not OTHER99"));
+            result.Warnings.Should().Contain(w => w.Contains("rejected"));
+            expected.Should().Be(0, "the sample's own rows all carry the project's real code");
+        }
+        finally
+        {
+            using var scope = _fixture.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<DipDbContext>();
+            await db.Projects.Where(p => p.Id == _fixture.QpacProjectId)
+                .ExecuteUpdateAsync(u => u.SetProperty(p => p.Code, "QF01012"));
+        }
+    }
+
+    // How many rows of a sample carry a project code other than the project's own.
+    private async Task<int> ForeignProjectRowsAsync(string fileName)
+    {
+        using var scope = _fixture.CreateScope();
+        var reader = scope.ServiceProvider.GetRequiredService<Dip.Application.Abstractions.IExcelReader>();
+        var db = scope.ServiceProvider.GetRequiredService<DipDbContext>();
+        var code = await db.Projects.Where(p => p.Id == _fixture.QpacProjectId)
+            .Select(p => p.Code).FirstAsync();
+
+        using var wb = reader.Open(SampleFiles.Open(fileName));
+        var sheet = wb.Sheet("TIDP_Sheet");
+        var headerRow = DocumentRowParser.FindDocumentTableHeader(sheet);
+        var columns = DocumentRowParser.MapDocumentColumns(sheet, headerRow);
+
+        var foreign = 0;
+        for (var r = headerRow + 1; r <= sheet.RowCount; r++)
+        {
+            var value = DocumentRowParser.ReadRequired(sheet.Row(r), columns.F01);
+            if (!string.IsNullOrEmpty(value)
+                && !string.Equals(value, code, StringComparison.OrdinalIgnoreCase))
+            {
+                foreign++;
+            }
+        }
+        return foreign;
+    }
 }

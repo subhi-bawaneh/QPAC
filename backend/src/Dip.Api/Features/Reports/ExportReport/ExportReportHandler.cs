@@ -190,7 +190,8 @@ public sealed class ExportReportHandler : IQueryHandler<ExportReportQuery, Expor
         var revisions = await UnplannedRevisions.LoadAsync(_db, data, projectId, ct);
 
         var findings = ControlFindingsEngine.Compute(
-            data.Documents, data.TrackerRows, revisions, data.Baseline, data.StatusMappings);
+            data.Documents, data.TrackerRows, revisions, data.Baseline, data.StatusMappings,
+            data.Picklists);
 
         return new[]
         {

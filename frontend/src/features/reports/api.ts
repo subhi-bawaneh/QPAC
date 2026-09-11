@@ -96,7 +96,14 @@ export interface EvmSummary {
 
 // ---------------------------------------------------------------- control findings
 
+// What a finding points at, so a row can be opened. Two of the five have no document
+// to open — a delivered-but-unplanned row IS an Aconex revision, an unused package IS a
+// baseline activity — so the kind travels with the id.
+export type FindingSource = 'Document' | 'AconexRevision' | 'BaselineActivity'
+
 export interface DeliveredButUnplanned {
+  sourceId: string
+  sourceKind: FindingSource
   documentNumber: string
   revision: string
   title: string
@@ -106,6 +113,9 @@ export interface DeliveredButUnplanned {
 }
 
 export interface UnplannedDocument {
+  sourceId: string
+  sourceKind: FindingSource
+  documentId: string
   type: string
   discipline: string
   documentNumber: string
@@ -115,6 +125,8 @@ export interface UnplannedDocument {
 }
 
 export interface UnusedPackage {
+  sourceId: string
+  sourceKind: FindingSource
   package: string
   activityCode: string
   originalDuration: number
@@ -123,6 +135,9 @@ export interface UnusedPackage {
 }
 
 export interface DuplicateDocument {
+  sourceId: string
+  sourceKind: FindingSource
+  documentId: string
   type: string
   discipline: string
   documentNumber: string
@@ -132,11 +147,24 @@ export interface DuplicateDocument {
   count: number
 }
 
+/** A numbering field holding a value that is in no picklist: named field, named value. */
+export interface OffListSegment {
+  sourceId: string
+  sourceKind: FindingSource
+  documentId: string
+  documentNumber: string
+  field: string
+  value: string
+  discipline: string
+  title: string
+}
+
 export interface ControlFindings {
   deliveredButUnplanned: DeliveredButUnplanned[]
   unplanned: UnplannedDocument[]
   unusedPackages: UnusedPackage[]
   duplicates: DuplicateDocument[]
+  offList: OffListSegment[]
 }
 
 export function useControlFindings() {

@@ -4,6 +4,7 @@ import { Badge } from '@/shared/ui/badge'
 import { Spinner } from '@/shared/ui/spinner'
 import { apiErrorMessage } from '@/shared/api/client'
 import { formatDate } from '@/shared/lib/utils'
+import { HistoryPanel } from '@/features/audit/HistoryPanel'
 import { StatusBadge } from './StatusBadge'
 import { useTrackerDocument } from './api'
 
@@ -105,6 +106,13 @@ export function DocumentDrawer({ documentId, onClose }: {
                     ))}
                   </ul>
                 )}
+              </section>
+
+              <section>
+                <h3 className="mb-2 text-xs font-semibold uppercase text-muted-foreground">
+                  Who changed this
+                </h3>
+                <HistoryPanel entity="Document" entityId={documentId} />
               </section>
             </>
           ) : null}

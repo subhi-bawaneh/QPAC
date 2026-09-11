@@ -20,6 +20,7 @@ internal sealed record ReportData(
     IReadOnlyList<TrackerRow> TrackerRows,
     IReadOnlyList<BaselineActivity> Baseline,
     IReadOnlyList<StatusMapping> StatusMappings,
+    IReadOnlyList<PicklistItem> Picklists,
     int DocumentsWithoutSnapshot)
 {
     public bool RecalculationRequired => DocumentsWithoutSnapshot > 0;
@@ -75,7 +76,15 @@ internal static class ReportDataLoader
             .Where(m => m.ProjectId == projectId && !m.IsDeleted)
             .ToListAsync(ct);
 
-        return new ReportData(project, documents, rows, baseline, statusMappings, missing);
+        // The off-list finding checks each numbering field against its list, so the
+        // lists travel with the rest of the report's inputs.
+        var picklists = await db.PicklistItems
+            .AsNoTracking()
+            .Where(p => p.ProjectId == projectId && !p.IsDeleted)
+            .ToListAsync(ct);
+
+        return new ReportData(
+            project, documents, rows, baseline, statusMappings, picklists, missing);
     }
 }
 

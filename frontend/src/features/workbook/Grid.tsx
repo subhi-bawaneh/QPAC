@@ -215,10 +215,17 @@ export function Grid({
               >
                 <div
                   role="rowheader"
+                  // A row a person edited is marked, so hand-entered data is never
+                  // mistaken for imported data — and so the count the replace dialog
+                  // shows has something visible behind it.
+                  title={row.state === 'Edited' ? 'Edited by hand' : undefined}
                   className="sticky left-0 z-10 h-[22px] shrink-0 border-b border-r border-[#d9d9d9] bg-[#f2f2f2]
                     text-center text-[11px] leading-[22px] text-muted-foreground dark:border-[#3a3a3a] dark:bg-[#2b2b2b]"
                   style={{ width: GUTTER_WIDTH }}
                 >
+                  {row.state === 'Edited' ? (
+                    <span className="text-primary" aria-label="Edited by hand">•</span>
+                  ) : null}
                   {row.rowNumber}
                 </div>
 

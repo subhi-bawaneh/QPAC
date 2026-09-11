@@ -305,3 +305,16 @@ export interface DeleteResult {
   documentsRemoved: number
   auditRowsWritten: number
 }
+
+/** One human decision, as the history panel renders it. */
+export interface AuditEntry {
+  id: string
+  entityName: string
+  entityId: string
+  action: string
+  field: string | null
+  oldValue: string | null
+  newValue: string | null
+  userId: string
+  at: string
+}

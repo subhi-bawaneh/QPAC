@@ -1,3 +1,4 @@
+using Dip.Domain.Entities;
 using Dip.Application.Abstractions;
 using Dip.Domain.Enums;
 using Dip.Infrastructure.Persistence;

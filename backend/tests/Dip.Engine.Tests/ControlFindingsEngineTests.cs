@@ -213,4 +213,92 @@ public class ControlFindingsEngineTests
         findings.UnusedPackages.Should().BeEmpty();
         findings.Duplicates.Should().BeEmpty();
     }
+
+    // ---- 5. a numbering field holding a value that is in no picklist
+
+    private static PicklistItem Code(PicklistField field, string code) => new()
+    {
+        Field = field,
+        Code = code,
+        Description = code,
+    };
+
+    // The finding names the field and the value. "Segment 7 holds MBLAD2, which is not
+    // in the Building list" is fixed in a minute; "invalid number" sits open for months.
+    [Fact]
+    public void OffList_NamesTheFieldAndTheValue()
+    {
+        var document = Doc("QF01012-NES-C04518-SDW-STL-00-MBLAD2-0ZZ0001");
+        document.F01Project = "QF01012";
+        document.F04DocType = "SDW";
+        document.F05Discipline = "STL";
+        document.F07Building = "MBLAD2";
+
+        var findings = ControlFindingsEngine.Compute(
+            new[] { document }, Array.Empty<TrackerRow>(), Array.Empty<AconexRevision>(),
+            Array.Empty<BaselineActivity>(), Statuses,
+            new[]
+            {
+                Code(PicklistField.Project, "QF01012"),
+                Code(PicklistField.DocType, "SDW"),
+                Code(PicklistField.Discipline, "STL"),
+                Code(PicklistField.Building, "Z00000"),
+                Code(PicklistField.Building, "CENT01"),
+            });
+
+        var offList = findings.OffList.Should().ContainSingle().Subject;
+        offList.Field.Should().Be("Building");
+        offList.Value.Should().Be("MBLAD2");
+        offList.DocumentId.Should().Be(document.Id);
+        offList.SourceKind.Should().Be(FindingSource.Document);
+    }
+
+    // Validation is a lookup, never a length or a shape rule. SECE001 is seven
+    // characters and valid; a six-character code that is in no list is not.
+    [Fact]
+    public void OffList_IsALookupNotALengthCheck()
+    {
+        var valid = Doc("VALID");
+        valid.F07Building = "SECE001";
+        var invalid = Doc("INVALID");
+        invalid.F07Building = "XXXXXX";
+
+        var findings = ControlFindingsEngine.Compute(
+            new[] { valid, invalid }, Array.Empty<TrackerRow>(), Array.Empty<AconexRevision>(),
+            Array.Empty<BaselineActivity>(), Statuses,
+            new[] { Code(PicklistField.Building, "SECE001") });
+
+        findings.OffList.Should().ContainSingle()
+            .Which.Value.Should().Be("XXXXXX", "seven characters is not what makes a code valid");
+    }
+
+    // A soft-deleted code is not a valid value: the operator removed it on purpose.
+    [Fact]
+    public void OffList_TreatsASoftDeletedCodeAsOffList()
+    {
+        var document = Doc("DOC");
+        document.F07Building = "GONE";
+
+        var deleted = Code(PicklistField.Building, "GONE");
+        deleted.IsDeleted = true;
+
+        var findings = ControlFindingsEngine.Compute(
+            new[] { document }, Array.Empty<TrackerRow>(), Array.Empty<AconexRevision>(),
+            Array.Empty<BaselineActivity>(), Statuses,
+            new[] { deleted, Code(PicklistField.Building, "Z00000") });
+
+        findings.OffList.Should().ContainSingle().Which.Value.Should().Be("GONE");
+    }
+
+    // With no lists loaded there is nothing to check against, and reporting every field
+    // of every document as off-list would bury the four findings that mean something.
+    [Fact]
+    public void OffList_ReportsNothingWhenNoPicklistsAreLoaded()
+    {
+        var findings = ControlFindingsEngine.Compute(
+            new[] { Doc("DOC") }, Array.Empty<TrackerRow>(), Array.Empty<AconexRevision>(),
+            Array.Empty<BaselineActivity>(), Statuses, Array.Empty<PicklistItem>());
+
+        findings.OffList.Should().BeEmpty();
+    }
 }

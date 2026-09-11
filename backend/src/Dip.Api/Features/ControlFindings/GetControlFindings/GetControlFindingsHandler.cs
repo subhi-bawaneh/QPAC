@@ -21,7 +21,8 @@ public sealed class GetControlFindingsHandler
         var revisions = await UnplannedRevisions.LoadAsync(_db, data, query.ProjectId, ct);
 
         var findings = ControlFindingsEngine.Compute(
-            data.Documents, data.TrackerRows, revisions, data.Baseline, data.StatusMappings);
+            data.Documents, data.TrackerRows, revisions, data.Baseline, data.StatusMappings,
+            data.Picklists);
 
         return new ControlFindingsResponse(
             findings, data.RecalculationRequired, data.DocumentsWithoutSnapshot);

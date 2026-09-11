@@ -1,4 +1,6 @@
+using Dip.Domain.Entities;
 using Dip.Api.Features.Lists.GetStatusMappings;
+using Dip.Api.Common;
 using Dip.Application.Abstractions;
 using Dip.Application.Behaviors;
 using Dip.Infrastructure.Persistence;
@@ -10,8 +12,13 @@ public sealed class RestoreStatusMappingHandler
     : ICommandHandler<RestoreStatusMappingCommand, StatusMappingDto>
 {
     private readonly DipDbContext _db;
+    private readonly ICurrentUser _currentUser;
 
-    public RestoreStatusMappingHandler(DipDbContext db) => _db = db;
+    public RestoreStatusMappingHandler(DipDbContext db, ICurrentUser currentUser)
+    {
+        _db = db;
+        _currentUser = currentUser;
+    }
 
     public async Task<StatusMappingDto> Handle(RestoreStatusMappingCommand command, CancellationToken ct)
     {
@@ -28,8 +35,13 @@ public sealed class RestoreStatusMappingHandler
             throw new ConflictException($"'{mapping.AconexStatus}' is already mapped");
         }
 
+        var by = _currentUser.UserName ?? "system";
+        var at = DateTime.UtcNow;
         mapping.IsDeleted = false;
         mapping.DeletedAt = null;
+        Audited.MarkEdited(mapping, by, at);
+        Audited.Row(_db, mapping.ProjectId, nameof(StatusMapping), mapping.Id,
+            Audited.Restore, null, mapping.AconexStatus, by, at);
         return StatusMappingDto.From(mapping);
     }
 }

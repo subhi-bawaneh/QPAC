@@ -1,4 +1,5 @@
 using Dip.Api.Workers;
+using Dip.Api.Common;
 using Dip.Application.Abstractions;
 using Dip.Application.Behaviors;
 using Dip.Application.Documents;
@@ -104,20 +105,10 @@ public sealed class UpdateDocumentHandler : ICommandHandler<UpdateDocumentComman
             .Concat(NumberingChanges(beforeFields, NumberingFields(document)))
             .ToList();
 
-        foreach (var change in changes)
+        if (changes.Count > 0)
         {
-            _db.AuditLogs.Add(new AuditLog
-            {
-                ProjectId = document.ProjectId,
-                EntityName = nameof(Document),
-                EntityId = document.Id,
-                Action = "Update",
-                Field = change.Field,
-                OldValue = change.OldValue,
-                NewValue = change.NewValue,
-                UserId = by,
-                At = at,
-            });
+            Audited.MarkEdited(document, by, at);
+            Audited.Changes(_db, document.ProjectId, nameof(Document), document.Id, changes, by, at);
         }
 
         // The row's computed columns are stale until the engine runs again.

@@ -69,6 +69,7 @@ export function ControlFindingsPanel() {
               { id: 'unplanned', label: 'Unplanned in MIDP', count: data.unplanned.length, tone: 'danger' },
               { id: 'packages', label: 'Unused packages', count: data.unusedPackages.length },
               { id: 'duplicates', label: 'Duplicate numbers', count: data.duplicates.length, tone: 'danger' },
+              { id: 'offlist', label: 'Off-list values', count: data.offList.length },
             ]}
           />
 
@@ -128,7 +129,7 @@ export function ControlFindingsPanel() {
 
           <TabPanel id="duplicates" active={tab}>
             <FindingsCard
-              explanation="Every row sharing a document number with another. The Live layer forbids duplicates, so these come from drafts or from data imported before that rule applied."
+              explanation="Every row sharing a document number with another. A number another file already owns is skipped on import, so these come from one file using a number twice or from data loaded before that rule applied."
               empty="No document number is used twice."
               rows={data.duplicates}
               headers={['Document No', 'Discipline', 'Title', 'Author', 'Rows']}
@@ -139,6 +140,24 @@ export function ControlFindingsPanel() {
                   <td className="max-w-sm truncate px-4 py-2">{row.title}</td>
                   <td className="px-4 py-2 text-muted-foreground">{row.author ?? '—'}</td>
                   <td className="px-4 py-2"><Badge tone="danger">{row.count}</Badge></td>
+                </>
+              )}
+            />
+          </TabPanel>
+
+          <TabPanel id="offlist" active={tab}>
+            <FindingsCard
+              explanation="A numbering field holding a value that is in no picklist. The field and the value are named, because 'Building holds MBLAD2' is fixed in a minute where 'invalid number' sits open for months. Rows like these import and are flagged rather than rejected: some are a stale picklist, some are a typo, and only a person can tell them apart."
+              empty="Every numbering field holds a value from its list."
+              rows={data.offList}
+              headers={['Document No', 'Field', 'Value', 'Discipline', 'Title']}
+              render={(row) => (
+                <>
+                  <td className="px-4 py-2 font-mono text-xs">{row.documentNumber}</td>
+                  <td className="px-4 py-2">{row.field}</td>
+                  <td className="px-4 py-2"><Badge tone="warning">{row.value}</Badge></td>
+                  <td className="px-4 py-2">{row.discipline}</td>
+                  <td className="max-w-sm truncate px-4 py-2">{row.title}</td>
                 </>
               )}
             />
