@@ -9,8 +9,13 @@ public sealed class ListBaselineActivitiesHandler
     : IQueryHandler<ListBaselineActivitiesQuery, PagedResult<BaselineActivityDto>>
 {
     private readonly DipDbContext _db;
+    private readonly ISqlDialect _dialect;
 
-    public ListBaselineActivitiesHandler(DipDbContext db) => _db = db;
+    public ListBaselineActivitiesHandler(DipDbContext db, ISqlDialect dialect)
+    {
+        _db = db;
+        _dialect = dialect;
+    }
 
     public async Task<PagedResult<BaselineActivityDto>> Handle(
         ListBaselineActivitiesQuery query, CancellationToken ct)
@@ -36,9 +41,14 @@ public sealed class ListBaselineActivitiesHandler
         if (!string.IsNullOrEmpty(search))
         {
             var pattern = $"%{Escape(search)}%";
-            activities = activities.Where(b =>
-                EF.Functions.ILike(b.ActivityCode, pattern, @"\")
-                || EF.Functions.ILike(b.Package, pattern, @"\"));
+            // SQLite has no ILIKE, and its LIKE is case-insensitive for ASCII already.
+            activities = _dialect.SupportsILike
+                ? activities.Where(b =>
+                    EF.Functions.ILike(b.ActivityCode, pattern, @"\")
+                    || EF.Functions.ILike(b.Package, pattern, @"\"))
+                : activities.Where(b =>
+                    EF.Functions.Like(b.ActivityCode, pattern, @"\")
+                    || EF.Functions.Like(b.Package, pattern, @"\"));
         }
 
         var rows = await activities

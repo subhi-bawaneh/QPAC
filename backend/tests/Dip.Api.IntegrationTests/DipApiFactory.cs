@@ -42,6 +42,9 @@ public sealed class DipApiFactory : WebApplicationFactory<Program>, IAsyncLifeti
     {
         builder.ConfigureHostConfiguration(config => config.AddInMemoryCollection(new Dictionary<string, string?>
         {
+            // The suite is a Postgres suite. Without this the Development-only local
+            // defaults would redirect the host onto a SQLite file (see LocalDevDefaults).
+            ["Database:Provider"] = "Postgres",
             // If Postgres isn't available, use a placeholder so the host still starts
             // (tests that hit real endpoints will be skipped anyway).
             ["ConnectionStrings:Default"] = IsPostgresAvailable

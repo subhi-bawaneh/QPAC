@@ -35,7 +35,11 @@ public sealed class DriveHealthCheck : IHealthCheck
     public async Task<HealthCheckResult> CheckHealthAsync(
         HealthCheckContext context, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(_options.ApiKey) || string.IsNullOrWhiteSpace(_options.RootFolderId))
+        // A local mirror stands in for the Google API on a developer machine, and needs
+        // no key — see LocalMirrorDriveClient and docs/local-dev.md.
+        var usingMirror = !string.IsNullOrWhiteSpace(_options.LocalMirrorPath);
+        if ((!usingMirror && string.IsNullOrWhiteSpace(_options.ApiKey))
+            || string.IsNullOrWhiteSpace(_options.RootFolderId))
         {
             return HealthCheckResult.Degraded(
                 "Google Drive is not configured; sync is unavailable but uploads work");
@@ -45,7 +49,7 @@ public sealed class DriveHealthCheck : IHealthCheck
         {
             var children = await _drive.ListChildrenAsync(_options.RootFolderId, cancellationToken);
             return HealthCheckResult.Healthy(
-                $"Drive root readable ({children.Count} entries); "
+                $"{(usingMirror ? "Local mirror" : "Drive")} root readable ({children.Count} entries); "
                 + $"lastRunFinishedAt={Describe(_workers.LastRunFinishedAt)}; "
                 + $"queuedImports={_workers.QueuedImports}");
         }

@@ -7,6 +7,7 @@
 - `docs/refactor-plan.md` — **the v3 specification (2026-09-08) and the current shape of the system**: Drive read-only, no disk storage, hosted workers + SignalR, automatic import, the effective document set, editable Lists. It overrides the PLAN.md sections listed in its § 13; read it before PLAN.md.
 - `docs/refactor-log.md` — what the v3 run actually did, per phase: commits, removals, deviations and the reasons for them.
 - `docs/excel-analysis.md` — written in Phase 0; what the sample workbooks actually contain and any discrepancy with PLAN.md.
+- `docs/local-dev.md` — how to run the whole thing locally: the API on a SQLite file, the frontend against it, and what differs from Postgres.
 - `samples/` — TIDP-STL.xlsx, MIDP.xlsx, Tracker.xlsx. Every computed number must match these files.
 
 ## Hard rules
@@ -26,14 +27,17 @@
 React 18 + TypeScript + Vite · Tailwind + shadcn/ui · TanStack Query + `@tanstack/react-virtual` · `@microsoft/signalr` · React Router · react-hook-form + zod · Recharts · Vitest
 Hosting: API on ASPMonster (IIS in-process — the pool must not idle out, see `docs/deploy.md` § 1.1), frontend on Vercel.
 Tests run against a local Postgres only; `TEST_POSTGRES_CONNECTION` pointing at Neon is refused.
+A local `dotnet run` uses **SQLite** (`App_Data/dip-local.db`, schema from `EnsureCreated`) and ignores any Postgres connection string in user-secrets — deployments and `dotnet ef` are unaffected. See `docs/local-dev.md`.
 
 ## Commands
 ```
 cd backend && dotnet build && dotnet test
 dotnet ef migrations add <Name> -p src/Dip.Infrastructure -s src/Dip.Api
 dotnet ef database update      -p src/Dip.Infrastructure -s src/Dip.Api
-dotnet run --project src/Dip.Api
-# Local dev without a Google API key: serve the checked-out Qpac_1/ folder as "Drive" (Development only)
-GoogleDrive__LocalMirrorPath=$PWD/../Qpac_1 GoogleDrive__StartupDelaySeconds=3 dotnet run --project src/Dip.Api
+# Local run: SQLite at src/Dip.Api/App_Data/dip-local.db, generated dev credentials
+# printed at startup, Qpac_1/ standing in for Drive. No Postgres, no Google API key.
+./scripts/run-local.sh                 # == dotnet run --project src/Dip.Api
+./scripts/reset-local-db.sh            # after a model change: drop the local schema
+Database__Provider=Postgres dotnet run --project src/Dip.Api   # opt back into Neon
 cd frontend && npm i && npm run dev && npm run gen:api
 ```

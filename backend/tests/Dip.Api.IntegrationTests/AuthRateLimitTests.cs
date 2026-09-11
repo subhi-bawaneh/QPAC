@@ -35,6 +35,9 @@ public class AuthRateLimitTests
             builder.ConfigureHostConfiguration(config => config.AddInMemoryCollection(
                 new Dictionary<string, string?>
                 {
+                    // See DipApiFactory: pin the provider so the local SQLite defaults
+                    // never apply to a test host.
+                    ["Database:Provider"] = "Postgres",
                     ["ConnectionStrings:Default"] = _connectionString,
                     ["Jwt:Key"] = "integration-test-key-not-secret-32bytes-min!",
                     ["RateLimit:AuthPermitPerWindow"] = PermitLimit.ToString(),

@@ -9,8 +9,13 @@ public sealed class ListDraftDocumentsHandler
     : IQueryHandler<ListDraftDocumentsQuery, PagedResult<DraftDocumentDto>>
 {
     private readonly DipDbContext _db;
+    private readonly ISqlDialect _dialect;
 
-    public ListDraftDocumentsHandler(DipDbContext db) => _db = db;
+    public ListDraftDocumentsHandler(DipDbContext db, ISqlDialect dialect)
+    {
+        _db = db;
+        _dialect = dialect;
+    }
 
     public async Task<PagedResult<DraftDocumentDto>> Handle(
         ListDraftDocumentsQuery query, CancellationToken ct)
@@ -27,8 +32,12 @@ public sealed class ListDraftDocumentsHandler
         if (!string.IsNullOrEmpty(search))
         {
             var pattern = $"%{Escape(search)}%";
-            q = q.Where(d => EF.Functions.ILike(d.DocumentNumber, pattern, @"\")
-                          || EF.Functions.ILike(d.Title, pattern, @"\"));
+            // SQLite has no ILIKE, and its LIKE is case-insensitive for ASCII already.
+            q = _dialect.SupportsILike
+                ? q.Where(d => EF.Functions.ILike(d.DocumentNumber, pattern, @"\")
+                            || EF.Functions.ILike(d.Title, pattern, @"\"))
+                : q.Where(d => EF.Functions.Like(d.DocumentNumber, pattern, @"\")
+                            || EF.Functions.Like(d.Title, pattern, @"\"));
         }
 
         var total = await q.CountAsync(ct);

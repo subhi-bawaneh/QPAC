@@ -63,6 +63,14 @@ public class DipDbContext
         builder.Entity<Microsoft.AspNetCore.Identity.IdentityUserToken<Guid>>().ToTable("UserTokens");
 
         builder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
+
+        // Local development can run the whole system on a SQLite file instead of Neon.
+        // EF keys its model cache by provider, so this branch never touches the
+        // Postgres model. See SqliteModelTweaks and docs/local-dev.md.
+        if (Database.IsSqlite())
+        {
+            SqliteModelTweaks.Apply(builder);
+        }
     }
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)

@@ -558,3 +558,40 @@ against Neon through a local mirror of the Drive tree.
   Baseline and Lists.
 - Corporate Summary from an imported MIDP is 15,724 rows against the sheet's 15,883 (excel-analysis
   finding 22); pre-existing and worth the owner's look.
+
+## R9 — Local development on SQLite (2026-09-11)
+
+Asked for: a local run — API and frontend — that works off a local database instead of Neon.
+
+- `Database:Provider` (`Postgres` | `Sqlite`, inferred from the connection string when unset)
+  chooses the provider in `AddInfrastructure`. Every deployed environment stays on Npgsql.
+- `SqliteModelTweaks` normalises the Postgres-only parts of the model in one pass when the
+  context runs on SQLite: `timestamp without time zone` / `jsonb` / `bytea` cleared,
+  `decimal` mapped to `double` (SQLite stores decimals as text, which sorts wrongly). EF caches
+  a model per provider, so the Postgres model and its SQL are untouched.
+- `ISqlDialect` is the one place the engine leaks into query code: the four search handlers
+  (Tracker, Drafts, Users, Baseline) pick `ILIKE` or `LIKE` from it. SQLite has no `ILIKE`, and
+  its `LIKE` is already case-insensitive for ASCII.
+- SQLite has no migrations of its own — the `Init` migration is Npgsql SQL — so its schema comes
+  from `EnsureCreated`, followed by `PRAGMA journal_mode=WAL` because the sync and import workers
+  write while the API serves requests. `scripts/reset-local-db.sh` drops the file after a model
+  change; `scripts/run-local.sh` runs the API.
+- `LocalDevDefaults` makes `dotnet run` work with nothing exported: the SQLite file, a generated
+  `Jwt:Key` and SuperAdmin password in git-ignored `App_Data/dev-secrets.json` (hard rule 5 —
+  nothing secret is committed), and `Qpac_1/` standing in for Drive. It deliberately **overrides**
+  a Neon connection string left in user-secrets, with a warning, so a local run cannot write to
+  the shared database; `Database__Provider=Postgres` opts back in. `EF.IsDesignTime` is excluded,
+  so `dotnet ef` still authors Npgsql migrations (verified: `dbcontext info` reports Npgsql).
+- `DriveHealthCheck` counts a configured local mirror as configured instead of reporting Degraded
+  for the missing API key.
+- The integration test hosts pin `Database:Provider=Postgres`, so the Development-only defaults
+  can never redirect a test onto SQLite.
+- Frontend: the default API origin was `5080` while `launchSettings` serves `5001`; both now say
+  `5001`, so `npm run dev` next to `dotnet run` needs no `.env`.
+
+Verified end to end on SQLite: schema created, `Qpac_1/` mirrored, all 40 workbooks imported
+(26,609 Aconex revisions, 1,363 baseline activities, 393 picklist rows, 32,154 draft documents),
+15,965 snapshots recalculated, and the four search endpoints returning rows. `dotnet build` clean,
+`dotnet test` 249/249 against a local Postgres, frontend 150/150.
+
+New docs: `docs/local-dev.md`.

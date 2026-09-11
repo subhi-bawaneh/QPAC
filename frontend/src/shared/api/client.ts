@@ -2,7 +2,9 @@ import axios, { AxiosError, type AxiosRequestConfig } from 'axios'
 import { tokenStorage } from '@/shared/auth/tokenStorage'
 import type { AuthResult, ProblemDetails } from './types'
 
-export const apiBaseUrl = (import.meta.env.VITE_API_URL ?? 'http://localhost:5080').replace(/\/$/, '')
+// Default matches the API's launchSettings profile, so `npm run dev` next to
+// `dotnet run` needs no .env at all. See docs/local-dev.md.
+export const apiBaseUrl = (import.meta.env.VITE_API_URL ?? 'http://localhost:5001').replace(/\/$/, '')
 
 export const api = axios.create({
   baseURL: apiBaseUrl,

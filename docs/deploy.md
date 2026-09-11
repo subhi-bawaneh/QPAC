@@ -63,6 +63,7 @@ Everything is read at **startup** — changing any of these needs a restart.
 | Variable | Required | What it is |
 |---|---|---|
 | `ConnectionStrings__Default` | yes | Neon connection string, Npgsql key/value format |
+| `Database__Provider` | no | `Postgres` (the default anywhere but Development). `Sqlite` is a local-development mode only — see `docs/local-dev.md` |
 | `Jwt__Key` | yes | ≥ 32 bytes of random secret; signs access tokens |
 | `Cors__Origins` | yes | Comma-separated frontend origins |
 | `Seed__AdminEmail` | first boot | Email of the SuperAdmin created on an empty database |
