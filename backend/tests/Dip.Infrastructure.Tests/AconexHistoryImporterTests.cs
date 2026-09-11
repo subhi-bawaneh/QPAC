@@ -18,7 +18,7 @@ public class AconexHistoryImporterTests : IClassFixture<ImporterFixture>
 
     // PLAN.md § 9.3.4 target: MIDP.xlsx!Aconex History has ~25,246 rows.
     // Verifies row count, normalisation (malformed → XXX, spaces stripped, -PDF removed),
-    // and that IsLatest / IsTerminated / InMidp flags are computed.
+    // and that the IsLatest / IsTerminated flags are computed.
     [Fact]
     public async Task ImportsFullAconexHistory_ComputesFlagsAndNormalisation()
     {
@@ -67,9 +67,9 @@ public class AconexHistoryImporterTests : IClassFixture<ImporterFixture>
 
         var foreignContract = await db.AconexRevisions
             .CountAsync(a => a.ProjectId == _fixture.QpacProjectId
-                && a.DocNoFinal != null && a.DocNoFinal.StartsWith("QF01012-BSB-") && !a.InMidp);
+                && a.DocNoFinal != null && a.DocNoFinal.StartsWith("QF01012-BSB-"));
         foreignContract.Should().BeGreaterThan(0,
-            "BSB rows are structurally valid numbers that are not in the MIDP");
+            "BSB rows are structurally valid numbers that no MIDP document covers");
 
         // Spaces stripped, export suffixes dropped: no DocNoFinal contains " " or ends with "-PDF".
         var withSpaces = await db.AconexRevisions

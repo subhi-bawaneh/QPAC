@@ -6,6 +6,9 @@ import { Tabs, TabPanel } from '@/shared/ui/tabs'
 import { apiErrorMessage } from '@/shared/api/client'
 import { useAuth } from '@/shared/auth/useAuth'
 import { Permissions } from '@/shared/auth/permissions'
+import { UploadButton } from '@/shared/ui/UploadButton'
+import { useUploadPicklists } from '@/shared/api/uploads'
+import { QPAC_PROJECT_ID } from '@/shared/api/project'
 import type { PicklistField } from '@/shared/api/types'
 import { PicklistTable } from './PicklistTable'
 import { StatusMappingTable } from './StatusMappingTable'
@@ -16,6 +19,8 @@ import { usePicklists, useStatusMappings } from './api'
 export function ListsPage() {
   const { can } = useAuth()
   const canManage = can(Permissions.listsManage)
+  const canUpload = can(Permissions.filesManage)
+  const upload = useUploadPicklists(QPAC_PROJECT_ID)
 
   const [tab, setTab] = useState<string>(picklistFields[0])
   const [showDeleted, setShowDeleted] = useState(false)
@@ -38,6 +43,14 @@ export function ListsPage() {
           </p>
         </div>
 
+        <div className="flex items-center gap-3">
+        {canUpload ? (
+          <UploadButton
+            label="Upload picklists"
+            pending={upload.isPending}
+            onSelect={(file) => void upload.mutateAsync(file)}
+          />
+        ) : null}
         <label className="flex items-center gap-2 text-sm">
           <Checkbox
             checked={showDeleted}
@@ -46,6 +59,7 @@ export function ListsPage() {
           />
           Show deleted
         </label>
+        </div>
       </div>
 
       <div className="overflow-x-auto pb-1">

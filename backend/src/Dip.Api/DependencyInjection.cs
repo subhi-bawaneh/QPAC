@@ -184,6 +184,7 @@ public static class DependencyInjection
         // do the work, and the two hosted workers that drive them (decision D4).
         services.AddSignalR();
         services.AddSingleton<Workers.WorkQueue>();
+        services.AddScoped<Workers.ImportService>();
         services.AddSingleton<Hubs.ISyncNotifier, Hubs.HubSyncNotifier>();
         services.AddHostedService<Workers.ImportWorker>();
 

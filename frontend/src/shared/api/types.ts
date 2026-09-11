@@ -261,3 +261,47 @@ export interface TidpFile {
   status: 'Importing' | 'Imported' | 'Failed'
   error: string | null
 }
+
+// ---------------------------------------------------------------- uploads
+
+export interface UploadAccepted {
+  tidpFileId: string
+  batchId: string
+  fileName: string
+}
+
+export interface AconexFilePreview {
+  fileName: string
+  rowsRead: number
+  rowsNew: number
+  rowsDuplicate: number
+  error: string | null
+}
+
+export interface AconexPreview {
+  files: AconexFilePreview[]
+  totalRowsRead: number
+  totalRowsNew: number
+  totalRowsDuplicate: number
+}
+
+export interface AconexUploadAccepted {
+  files: { batchId: string; fileName: string }[]
+}
+
+/** What a replace or a delete will destroy, counted rather than warned about. */
+export interface ReplacePreview {
+  tidpFileId: string
+  fileName: string
+  disciplineName: string
+  rows: number
+  editedRows: number
+  uploadedAt: string
+  uploadedBy: string
+}
+
+export interface DeleteResult {
+  tidpFileId: string
+  documentsRemoved: number
+  auditRowsWritten: number
+}

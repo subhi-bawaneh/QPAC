@@ -27,7 +27,13 @@ internal sealed class AconexRevisionConfiguration : IEntityTypeConfiguration<Aco
         b.Property(x => x.TransmittalIn).HasMaxLength(200);
         // Postgres timestamp with microsecond precision (default 6). Sub-second precision preserved.
         b.Property(x => x.DateModified).HasColumnType("timestamp without time zone");
-        b.HasIndex(x => new { x.ProjectId, x.AconexDocNo, x.Revision, x.DateModified }).IsUnique();
+        b.Property(x => x.LineHash).HasMaxLength(64).IsRequired();
+        // Identity is the whole line: an upload inserts what this index does not
+        // already hold. See AconexLineHasher for why it is not (doc, rev, date).
+        b.HasIndex(x => new { x.ProjectId, x.LineHash }).IsUnique();
+        // Not unique any more — Aconex can re-export one event with a corrected
+        // title — but the flag pass and the tracker both group on it.
+        b.HasIndex(x => new { x.ProjectId, x.AconexDocNo, x.Revision, x.DateModified });
         b.HasIndex(x => new { x.ProjectId, x.DocNoFinal });
         b.HasIndex(x => new { x.ProjectId, x.DocNoFinal, x.IsLatest });
         b.HasOne(x => x.Project).WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);

@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using Dip.Application.Abstractions;
+using Dip.Application.Documents;
 using Dip.Domain.Entities;
 using Dip.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -13,10 +14,16 @@ namespace Dip.Infrastructure.Importers;
 //   - IsTerminated: a same-DocNo + same-Revision row at or after this row
 //     has ReviewStatus="Terminated" OR Status in ("Closed", "No Longer In Use").
 //   - IsLatest: this row has the max DateModified for its DocNoFinal.
-//   - InMidp: DocNoFinal is present in the Documents table, or IsTerminated.
 //
-// Always writes to Live (Aconex history is versioned via ImportBatch; there
-// is no Draft/Live workflow for it).
+// An upload APPENDS. It never deletes: the owner exports periodically and cannot
+// remember what was already loaded, so a line already held is dropped and counted and
+// everything else is inserted. Identity is AconexLineHasher over the whole normalised
+// line — see there for why it is not (document, revision, date).
+//
+// Both flags are cross-row aggregates, so they are recomputed over the WHOLE surviving
+// set after an append, never over the new rows alone: otherwise a drawing that gains a
+// later event keeps an older row still claiming to be the latest, and the tracker picks
+// between them arbitrarily.
 public sealed class AconexHistoryImporter
 {
     private readonly DipDbContext _db;
@@ -43,6 +50,60 @@ public sealed class AconexHistoryImporter
         _db = db;
         _reader = reader;
     }
+
+    // The hash of every line in a workbook, without writing anything. The preview needs
+    // exactly this and nothing else: how many of these lines the project already holds.
+    public IReadOnlyList<string> ReadLineHashes(Stream content)
+    {
+        using var wb = _reader.Open(content);
+        var sheet = FindSheet(wb)
+            ?? throw new InvalidOperationException("No 'Aconex History' or 'SHD_History' sheet");
+
+        var headerRow = FindHeaderRow(sheet)
+            ?? throw new InvalidOperationException("Cannot locate 'Document No' header in Aconex sheet");
+        var cols = MapColumns(sheet, headerRow);
+
+        var hashes = new List<string>(capacity: 30_000);
+        for (var r = headerRow + 1; r <= sheet.RowCount; r++)
+        {
+            var row = sheet.Row(r);
+            var rawDocNo = row.Cell(cols.DocumentNo).GetStringOrNull()?.Trim();
+            if (string.IsNullOrEmpty(rawDocNo)) continue;
+
+            var dateModified = row.Cell(cols.DateModified).GetDateTime();
+            if (dateModified is null) continue;
+
+            hashes.Add(HashOf(row, cols, rawDocNo, dateModified.Value));
+        }
+
+        return hashes;
+    }
+
+    private static IExcelSheet? FindSheet(IExcelWorkbook wb)
+    {
+        foreach (var candidate in new[] { "Aconex History", "SHD_History" })
+        {
+            if (wb.TryGetSheet(candidate, out var sheet) && sheet is not null) return sheet;
+        }
+        return null;
+    }
+
+    private static string HashOf(IExcelRow row, ColumnMap cols, string rawDocNo, DateTime dateModified) =>
+        AconexLineHasher.Compute(
+            row.Cell(cols.File).GetStringOrNull(),
+            row.Cell(cols.FileName).GetStringOrNull(),
+            rawDocNo,
+            row.Cell(cols.Revision).GetStringOrNull(),
+            row.Cell(cols.Title).GetStringOrNull(),
+            row.Cell(cols.Status).GetStringOrNull(),
+            row.Cell(cols.ReviewStatus).GetStringOrNull(),
+            dateModified,
+            row.Cell(cols.Type).GetStringOrNull(),
+            row.Cell(cols.Discipline).GetStringOrNull(),
+            row.Cell(cols.Area).GetStringOrNull(),
+            row.Cell(cols.Venue).GetStringOrNull(),
+            row.Cell(cols.FloorLevel).GetStringOrNull(),
+            row.Cell(cols.TransmittalIn).GetStringOrNull());
 
     public async Task<ImportResult> ImportAsync(
         Guid projectId,
@@ -71,19 +132,6 @@ public sealed class AconexHistoryImporter
             ?? throw new InvalidOperationException("Cannot locate 'Document No' header in Aconex sheet");
         var cols = MapColumns(sheet, headerRow);
 
-        // Wipe previous Aconex data for this project so IsLatest / IsTerminated
-        // reflect only the current file. History is idempotent by design.
-        await _db.AconexRevisions
-            .Where(a => a.ProjectId == projectId)
-            .ExecuteDeleteAsync(ct);
-
-        // Preload MIDP document numbers for InMidp lookup.
-        var midpNumbers = await _db.Documents
-            .Where(d => d.ProjectId == projectId)
-            .Select(d => d.DocumentNumber)
-            .ToListAsync(ct);
-        var midpSet = midpNumbers.ToHashSet(StringComparer.OrdinalIgnoreCase);
-
         // Pass 1: parse every row into memory (25k rows -> ~10 MB, fine on IIS).
         var parsed = new List<ParsedRevision>(capacity: 30_000);
         var warnings = new List<string>();
@@ -106,8 +154,11 @@ public sealed class AconexHistoryImporter
                 continue;
             }
 
+            var lineHash = HashOf(row, cols, rawDocNo, dateModified.Value);
+
             parsed.Add(new ParsedRevision(
                 RowNumber: r,
+                LineHash: lineHash,
                 FileType: row.Cell(cols.File).GetStringOrNull()?.Trim() ?? string.Empty,
                 FileName: row.Cell(cols.FileName).GetStringOrNull()?.Trim() ?? string.Empty,
                 AconexDocNo: rawDocNo,
@@ -125,81 +176,50 @@ public sealed class AconexHistoryImporter
                 TransmittalIn: row.Cell(cols.TransmittalIn).GetStringOrNull()?.Trim()));
         }
 
-        // Pass 2: compute IsTerminated grouped by (DocNoFinal, Revision).
-        // A row is Terminated if any row in its (DocNo, Rev) group with
-        // DateModified >= this row's DateModified has terminal status.
-        var terminatedFlags = new bool[parsed.Count];
-        var byDocRev = parsed
-            .Select((p, i) => (Row: p, Index: i))
-            .GroupBy(x => (x.Row.DocNoFinal, x.Row.Revision));
-        foreach (var group in byDocRev)
-        {
-            // Track earliest DateModified among terminal-status rows.
-            DateTime? earliestTerminal = null;
-            foreach (var (p, _) in group)
-            {
-                if (IsTerminalStatus(p.Status, p.ReviewStatus))
-                {
-                    if (earliestTerminal is null || p.DateModified < earliestTerminal)
-                    {
-                        earliestTerminal = p.DateModified;
-                    }
-                }
-            }
-            if (earliestTerminal is null) continue;
+        var read = parsed.Count;
 
-            // Any row with DateModified <= max terminal date is Terminated,
-            // but since the formula says "DateModified >= this AND terminal",
-            // equivalently: a row is Terminated when the group has ANY terminal
-            // row at or after it. Iterating with the earliest-terminal covers
-            // all rows at or before it.
-            //
-            // Actually the original COUNTIFS uses `DateModified >= this`, which
-            // means R is Terminated if a terminal row exists whose DateModified
-            // is >= R.DateModified. So we mark R Terminated when the LATEST
-            // terminal row's DateModified >= R.DateModified.
-            DateTime latestTerminal = group
-                .Where(x => IsTerminalStatus(x.Row.Status, x.Row.ReviewStatus))
-                .Max(x => x.Row.DateModified);
-            foreach (var (p, i) in group)
+        // Pass 2: drop the lines this project already holds, and the ones the file
+        // repeats within itself. Counted, not silently swallowed: the whole point of
+        // an append is that the operator can see a re-upload did nothing.
+        var existingHashes = await _db.AconexRevisions
+            .Where(a => a.ProjectId == projectId)
+            .Select(a => a.LineHash)
+            .ToListAsync(ct);
+        var seen = existingHashes.ToHashSet(StringComparer.Ordinal);
+
+        var fresh = new List<ParsedRevision>(parsed.Count);
+        var duplicates = 0;
+        foreach (var p in parsed)
+        {
+            if (!seen.Add(p.LineHash))
             {
-                if (p.DateModified <= latestTerminal)
-                {
-                    terminatedFlags[i] = true;
-                }
+                duplicates++;
+                continue;
             }
+            fresh.Add(p);
         }
 
-        // Pass 3: compute IsLatest grouped by DocNoFinal (ignore XXX entries).
-        var latestFlags = new bool[parsed.Count];
-        var byDocFinal = parsed
-            .Select((p, i) => (Row: p, Index: i))
-            .Where(x => !string.IsNullOrEmpty(x.Row.DocNoFinal))
-            .GroupBy(x => x.Row.DocNoFinal!);
-        foreach (var group in byDocFinal)
-        {
-            var max = group.Max(x => x.Row.DateModified);
-            // Ties: mark ALL rows sharing the max as Latest (rare — sub-second precision).
-            foreach (var (p, i) in group)
-            {
-                if (p.DateModified == max) latestFlags[i] = true;
-            }
-        }
-
-        // Pass 4: chunk-insert AconexRevision rows with computed flags.
+        // Pass 3: insert the new lines. Flags are left false here — pass 4 computes
+        // them over the whole surviving set, including the rows already in the table.
         var pending = new List<AconexRevision>(InsertChunkSize);
         var inserted = 0;
-        for (var i = 0; i < parsed.Count; i++)
-        {
-            var p = parsed[i];
-            var isTerminated = terminatedFlags[i];
-            var isLatest = latestFlags[i];
-            var inMidp = isTerminated || (p.DocNoFinal is not null && midpSet.Contains(p.DocNoFinal));
 
+        async Task FlushAsync()
+        {
+            if (pending.Count == 0) return;
+            _db.AconexRevisions.AddRange(pending);
+            await _db.SaveChangesAsync(ct);
+            foreach (var e in pending) _db.Entry(e).State = EntityState.Detached;
+            pending.Clear();
+        }
+
+        foreach (var p in fresh)
+        {
             pending.Add(new AconexRevision
             {
                 ProjectId = projectId,
                 ImportBatchId = importBatchId,
+                LineHash = p.LineHash,
                 FileType = p.FileType,
                 FileName = p.FileName,
                 AconexDocNo = p.AconexDocNo,
@@ -215,29 +235,124 @@ public sealed class AconexHistoryImporter
                 Venue = p.Venue,
                 FloorLevel = p.FloorLevel,
                 TransmittalIn = p.TransmittalIn,
-                IsTerminated = isTerminated,
-                IsLatest = isLatest,
-                InMidp = inMidp,
             });
             inserted++;
 
-            if (pending.Count >= InsertChunkSize)
+            if (pending.Count >= InsertChunkSize) await FlushAsync();
+        }
+
+        await FlushAsync();
+
+        // Pass 4: recompute both flags over everything this project now holds.
+        if (inserted > 0)
+        {
+            await RecomputeFlagsAsync(projectId, ct);
+        }
+
+        return new ImportResult(read, inserted, 0, skipped, warnings, duplicates);
+    }
+
+    // IsTerminated and IsLatest are aggregates over every row of a document, so they
+    // are rebuilt from the full set rather than patched. Only rows whose flag actually
+    // changes are written, which keeps a no-op re-upload from touching 25k rows.
+    internal async Task RecomputeFlagsAsync(Guid projectId, CancellationToken ct)
+    {
+        // The batch's own timestamp orders the tie-break: an ImportBatchId is a random
+        // Guid, so comparing ids would pick a winner at random, which is the very thing
+        // the tie-break exists to stop.
+        var batchOrder = await _db.ImportBatches
+            .Where(b => b.ProjectId == projectId)
+            .Select(b => new { b.Id, b.ImportedAt })
+            .ToDictionaryAsync(b => b.Id, b => b.ImportedAt, ct);
+
+        var rows = await _db.AconexRevisions
+            .Where(a => a.ProjectId == projectId)
+            .Select(a => new FlagRow(
+                a.Id, a.ImportBatchId, a.DocNoFinal, a.Revision, a.DateModified,
+                a.AconexStatus, a.ReviewStatus, a.IsTerminated, a.IsLatest))
+            .ToListAsync(ct);
+
+        var terminated = new HashSet<Guid>();
+        var latest = new HashSet<Guid>();
+
+        // Terminated: a row is terminated when its (document, revision) group holds a
+        // terminal-status row at or after it — the workbook's COUNTIFS, which uses
+        // `DateModified >= this`.
+        foreach (var group in rows.GroupBy(r => (r.DocNoFinal, r.Revision)))
+        {
+            DateTime? latestTerminal = null;
+            foreach (var row in group)
             {
-                _db.AconexRevisions.AddRange(pending);
-                await _db.SaveChangesAsync(ct);
-                foreach (var e in pending) _db.Entry(e).State = EntityState.Detached;
-                pending.Clear();
+                if (!IsTerminalStatus(row.AconexStatus, row.ReviewStatus)) continue;
+                if (latestTerminal is null || row.DateModified > latestTerminal)
+                {
+                    latestTerminal = row.DateModified;
+                }
+            }
+            if (latestTerminal is null) continue;
+
+            foreach (var row in group)
+            {
+                if (row.DateModified <= latestTerminal) terminated.Add(row.Id);
             }
         }
 
-        if (pending.Count > 0)
+        // Latest: the row with the greatest DateModified for its document. Ties are
+        // possible now that a re-export can correct a title without moving the clock,
+        // so exactly one wins — newest batch, then highest id — rather than all of
+        // them, which would leave the tracker choosing arbitrarily.
+        foreach (var group in rows.Where(r => !string.IsNullOrEmpty(r.DocNoFinal))
+                                  .GroupBy(r => r.DocNoFinal!, StringComparer.OrdinalIgnoreCase))
         {
-            _db.AconexRevisions.AddRange(pending);
-            await _db.SaveChangesAsync(ct);
+            var winner = group
+                .OrderByDescending(r => r.DateModified)
+                .ThenByDescending(r => batchOrder.TryGetValue(r.ImportBatchId, out var at)
+                    ? at
+                    : DateTime.MinValue)
+                .ThenByDescending(r => r.Id)
+                .First();
+            latest.Add(winner.Id);
         }
 
-        return new ImportResult(parsed.Count, inserted, 0, skipped, warnings);
+        var changedTerminated = rows.Where(r => terminated.Contains(r.Id) != r.IsTerminated).ToList();
+        var changedLatest = rows.Where(r => latest.Contains(r.Id) != r.IsLatest).ToList();
+
+        foreach (var chunk in changedTerminated.Chunk(InsertChunkSize))
+        {
+            var on = chunk.Where(r => terminated.Contains(r.Id)).Select(r => r.Id).ToList();
+            var off = chunk.Where(r => !terminated.Contains(r.Id)).Select(r => r.Id).ToList();
+            if (on.Count > 0)
+            {
+                await _db.AconexRevisions.Where(a => on.Contains(a.Id))
+                    .ExecuteUpdateAsync(u => u.SetProperty(a => a.IsTerminated, true), ct);
+            }
+            if (off.Count > 0)
+            {
+                await _db.AconexRevisions.Where(a => off.Contains(a.Id))
+                    .ExecuteUpdateAsync(u => u.SetProperty(a => a.IsTerminated, false), ct);
+            }
+        }
+
+        foreach (var chunk in changedLatest.Chunk(InsertChunkSize))
+        {
+            var on = chunk.Where(r => latest.Contains(r.Id)).Select(r => r.Id).ToList();
+            var off = chunk.Where(r => !latest.Contains(r.Id)).Select(r => r.Id).ToList();
+            if (on.Count > 0)
+            {
+                await _db.AconexRevisions.Where(a => on.Contains(a.Id))
+                    .ExecuteUpdateAsync(u => u.SetProperty(a => a.IsLatest, true), ct);
+            }
+            if (off.Count > 0)
+            {
+                await _db.AconexRevisions.Where(a => off.Contains(a.Id))
+                    .ExecuteUpdateAsync(u => u.SetProperty(a => a.IsLatest, false), ct);
+            }
+        }
     }
+
+    private sealed record FlagRow(
+        Guid Id, Guid ImportBatchId, string? DocNoFinal, string Revision, DateTime DateModified,
+        string AconexStatus, string? ReviewStatus, bool IsTerminated, bool IsLatest);
 
     // Normalise the raw Aconex value onto a document number, or to null when it is
     // not one. Three rules, in order, and no substitution of any kind:
@@ -335,6 +450,7 @@ public sealed class AconexHistoryImporter
 
     private sealed record ParsedRevision(
         int RowNumber,
+        string LineHash,
         string FileType, string FileName, string AconexDocNo, string? DocNoFinal,
         string Revision, string Title, string Status, string? ReviewStatus,
         DateTime DateModified,

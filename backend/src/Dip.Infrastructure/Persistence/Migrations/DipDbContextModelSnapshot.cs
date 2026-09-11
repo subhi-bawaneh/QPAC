@@ -70,14 +70,16 @@ namespace Dip.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("ImportBatchId")
                         .HasColumnType("uuid");
 
-                    b.Property<bool>("InMidp")
-                        .HasColumnType("boolean");
-
                     b.Property<bool>("IsLatest")
                         .HasColumnType("boolean");
 
                     b.Property<bool>("IsTerminated")
                         .HasColumnType("boolean");
+
+                    b.Property<string>("LineHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
 
                     b.Property<Guid>("ProjectId")
                         .HasColumnType("uuid");
@@ -112,10 +114,12 @@ namespace Dip.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("ProjectId", "DocNoFinal");
 
+                    b.HasIndex("ProjectId", "LineHash")
+                        .IsUnique();
+
                     b.HasIndex("ProjectId", "DocNoFinal", "IsLatest");
 
-                    b.HasIndex("ProjectId", "AconexDocNo", "Revision", "DateModified")
-                        .IsUnique();
+                    b.HasIndex("ProjectId", "AconexDocNo", "Revision", "DateModified");
 
                     b.ToTable("AconexRevisions", (string)null);
                 });

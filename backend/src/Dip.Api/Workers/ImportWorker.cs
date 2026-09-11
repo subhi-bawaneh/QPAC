@@ -62,8 +62,13 @@ public sealed class ImportWorker : BackgroundService
         switch (item.Kind)
         {
             case WorkItemKind.ImportBatch:
-                // Stage 3 wires ImportService in here; until then nothing enqueues one.
-                _logger.LogWarning("No import service is registered for batch {Id}", item.Id);
+                if (item.Payload is null)
+                {
+                    _logger.LogWarning("Import batch {Id} was queued without its bytes", item.Id);
+                    break;
+                }
+                await scope.ServiceProvider.GetRequiredService<ImportService>()
+                    .RunAsync(item.Id, item.Payload, ct);
                 break;
 
             case WorkItemKind.Recalculate:

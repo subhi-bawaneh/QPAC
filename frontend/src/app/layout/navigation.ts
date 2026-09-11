@@ -1,4 +1,5 @@
 import {
+  History,
   FolderTree, LayoutDashboard, ListChecks, Table2, FileSpreadsheet, BarChart3, AlertTriangle,
   CalendarRange, Settings, Users,
   type LucideIcon,
@@ -19,6 +20,7 @@ export const navigation: NavItem[] = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, permission: Permissions.reportsView },
   { to: '/tidps', label: 'TIDPs', icon: FolderTree, permission: Permissions.reportsView },
   { to: '/midp', label: 'MIDP', icon: FileSpreadsheet, permission: Permissions.reportsView },
+  { to: '/aconex', label: 'Aconex history', icon: History, permission: Permissions.reportsView },
   { to: '/baseline', label: 'Baseline', icon: CalendarRange, permission: Permissions.baselineManage },
   { to: '/tracker', label: 'Tracker', icon: Table2, permission: Permissions.reportsView },
   { to: '/summary', label: 'Summary', icon: BarChart3, permission: Permissions.reportsView },

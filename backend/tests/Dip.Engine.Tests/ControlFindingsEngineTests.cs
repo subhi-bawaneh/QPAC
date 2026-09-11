@@ -36,7 +36,7 @@ public class ControlFindingsEngineTests
         PlannedStart: plannedStart, PlannedFinish: null, ActualStart: null, ActualFinish: null);
 
     private static AconexRevision Revision(
-        string? docNoFinal, bool isLatest = true, bool inMidp = false,
+        string? docNoFinal, bool isLatest = true, bool isTerminated = false,
         string revision = "00", string status = "B - Approved with Comments") => new()
     {
         DocNoFinal = docNoFinal,
@@ -45,7 +45,7 @@ public class ControlFindingsEngineTests
         AconexStatus = status,
         DateModified = Modified,
         IsLatest = isLatest,
-        InMidp = inMidp,
+        IsTerminated = isTerminated,
     };
 
     private static BaselineActivity Submittal(string code, string package = "PKG", int duration = 10) => new()
@@ -59,16 +59,20 @@ public class ControlFindingsEngineTests
 
     // ---- 1. delivered but unplanned
 
+    // Membership is decided against the documents the engine is given, not against a
+    // flag stamped at import: under append semantics the events usually arrive first,
+    // so a stored flag would say every submission is unplanned.
     [Fact]
-    public void Delivered_ListsLatestRevisionsThatAreNotInTheMidp()
+    public void Delivered_ListsLatestRevisionsThatNoPlannedDocumentCovers()
     {
         var findings = ControlFindingsEngine.Compute(
-            Array.Empty<Document>(), Array.Empty<TrackerRow>(),
+            new[] { Doc("DOC-B") }, Array.Empty<TrackerRow>(),
             new[]
             {
                 Revision("DOC-A"),                                  // reported
-                Revision("DOC-B", inMidp: true),                    // planned, so fine
+                Revision("DOC-B"),                                  // planned, so fine
                 Revision("DOC-C", isLatest: false),                 // superseded revision
+                Revision("DOC-D", isTerminated: true),              // withdrawn, not delivered
                 Revision(null),                                     // not a document number
                 Revision(string.Empty),
             },
@@ -76,6 +80,18 @@ public class ControlFindingsEngineTests
 
         findings.DeliveredButUnplanned.Should().ContainSingle()
             .Which.DocumentNumber.Should().Be("DOC-A");
+    }
+
+    // Case-insensitively: Aconex upper-cases, the TIDP may not.
+    [Fact]
+    public void Delivered_MatchesThePlannedNumberCaseInsensitively()
+    {
+        var findings = ControlFindingsEngine.Compute(
+            new[] { Doc("doc-a") }, Array.Empty<TrackerRow>(),
+            new[] { Revision("DOC-A") },
+            Array.Empty<BaselineActivity>(), Statuses);
+
+        findings.DeliveredButUnplanned.Should().BeEmpty();
     }
 
     [Fact]
@@ -188,7 +204,7 @@ public class ControlFindingsEngineTests
         var findings = ControlFindingsEngine.Compute(
             new[] { document },
             new[] { RowFor(document, new DateTime(2026, 1, 1)) },
-            new[] { Revision("DOC-A", inMidp: true) },
+            new[] { Revision("DOC-A") },
             new[] { Submittal("QP.A.1000") },
             Statuses);
 

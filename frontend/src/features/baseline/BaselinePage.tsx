@@ -6,6 +6,10 @@ import { SelectItem, SimpleSelect } from '@/shared/ui/select'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import { Spinner } from '@/shared/ui/spinner'
+import { UploadButton } from '@/shared/ui/UploadButton'
+import { useUploadBaseline } from '@/shared/api/uploads'
+import { useAuth } from '@/shared/auth/useAuth'
+import { Permissions } from '@/shared/auth/permissions'
 import { api, apiErrorMessage } from '@/shared/api/client'
 import { QPAC_PROJECT_ID } from '@/shared/api/project'
 import { formatDate, formatNumber } from '@/shared/lib/utils'
@@ -20,6 +24,10 @@ export function BaselinePage() {
   const [type, setType] = useState<BaselineActivityType | ''>('')
   const [used, setUsed] = useState<'' | 'used' | 'unused'>('')
   const [page, setPage] = useState(1)
+
+  const { can } = useAuth()
+  const canUpload = can(Permissions.filesManage)
+  const upload = useUploadBaseline(QPAC_PROJECT_ID)
 
   const activities = useQuery({
     queryKey: ['baseline', QPAC_PROJECT_ID, { search, type, used, page }],
@@ -41,8 +49,11 @@ export function BaselinePage() {
     placeholderData: (previous) => previous,
   })
 
+  const hasBaseline = (activities.data?.total ?? 0) > 0
+
   return (
     <div className="space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
       <div>
         <h1 className="text-xl font-semibold">Baseline</h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -50,6 +61,14 @@ export function BaselinePage() {
           document's planned start; the Approval activity of the same package gives its
           planned finish.
         </p>
+      </div>
+      {canUpload ? (
+        <UploadButton
+          label={hasBaseline ? 'Replace baseline' : 'Initial upload'}
+          pending={upload.isPending}
+          onSelect={(file) => void upload.mutateAsync(file)}
+        />
+      ) : null}
       </div>
 
       <Card>

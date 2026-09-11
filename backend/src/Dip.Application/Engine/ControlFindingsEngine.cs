@@ -61,8 +61,16 @@ public static class ControlFindingsEngine
         var statuses = StatusMappingLookup.Create(statusMappings);
         var rowsByDocument = trackerRows.ToDictionary(r => r.DocumentId);
 
+        // Membership is decided here, against the documents this run was given, rather
+        // than read from a flag stamped at import time: under append semantics the
+        // events usually arrive before the documents do, so a stored flag is stale by
+        // construction.
+        var planned = documents
+            .Select(d => d.DocumentNumber)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
         return new ControlFindings(
-            DeliveredButUnplanned: FindDelivered(revisions, statuses),
+            DeliveredButUnplanned: FindDelivered(revisions, planned, statuses),
             Unplanned: FindUnplanned(documents, rowsByDocument),
             UnusedPackages: FindUnusedPackages(documents, trackerRows, baseline),
             Duplicates: FindDuplicates(documents, rowsByDocument));
@@ -71,10 +79,16 @@ public static class ControlFindingsEngine
     // Sheet: FILTER(SHD_History, (Document Length <> 3) * (In MIDP = FALSE) * (Latest = TRUE)).
     // "Document Length <> 3" is the workbook's way of saying the row has a usable
     // number, so a row whose raw value could not be normalised is not a finding.
+    // A terminated revision is not one either: it was withdrawn, not delivered.
     private static IReadOnlyList<DeliveredButUnplanned> FindDelivered(
-        IReadOnlyList<AconexRevision> revisions, StatusMappingLookup statuses) =>
+        IReadOnlyList<AconexRevision> revisions,
+        IReadOnlySet<string> planned,
+        StatusMappingLookup statuses) =>
         revisions
-            .Where(r => r.IsLatest && !r.InMidp && !string.IsNullOrEmpty(r.DocNoFinal))
+            .Where(r => r.IsLatest
+                && !r.IsTerminated
+                && !string.IsNullOrEmpty(r.DocNoFinal)
+                && !planned.Contains(r.DocNoFinal!))
             .Select(r => new DeliveredButUnplanned(
                 r.DocNoFinal!, r.Revision, r.Title, r.AconexStatus,
                 statuses.Find(r.AconexStatus), r.DateModified))

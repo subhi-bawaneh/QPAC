@@ -115,7 +115,6 @@ internal static class TrackerWorkbook
         var colTransmittal = Column(sheet, headerRow, "Transmittal In");
         var colTerminated = Column(sheet, headerRow, "Terminated");
         var colLatest = Column(sheet, headerRow, "Latest");
-        var colInMidp = Column(sheet, headerRow, "In MIDP");
 
         var rows = new List<AconexRevision>();
         for (var r = headerRow + 1; r <= sheet.RowCount; r++)
@@ -138,7 +137,6 @@ internal static class TrackerWorkbook
                 TransmittalIn = Text(row.Cell(colTransmittal)),
                 IsTerminated = Flag(row.Cell(colTerminated)),
                 IsLatest = Flag(row.Cell(colLatest)),
-                InMidp = Flag(row.Cell(colInMidp)),
             });
         }
         return rows;
