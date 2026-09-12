@@ -16,11 +16,11 @@ internal sealed class TidpFileConfiguration : IEntityTypeConfiguration<TidpFile>
         b.Property(x => x.UploadedBy).HasMaxLength(200).IsRequired();
         b.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
         b.Property(x => x.Error).HasMaxLength(2000);
-        b.Property(x => x.DateCreated).HasColumnType("timestamp without time zone");
-        b.Property(x => x.DateLastUpdated).HasColumnType("timestamp without time zone");
-        b.Property(x => x.UploadedAt).HasColumnType("timestamp without time zone");
-        b.Property(x => x.CreatedAt).HasColumnType("timestamp without time zone");
-        b.Property(x => x.UpdatedAt).HasColumnType("timestamp without time zone");
+        b.Property(x => x.DateCreated).HasColumnType("datetime2");
+        b.Property(x => x.DateLastUpdated).HasColumnType("datetime2");
+        b.Property(x => x.UploadedAt).HasColumnType("datetime2");
+        b.Property(x => x.CreatedAt).HasColumnType("datetime2");
+        b.Property(x => x.UpdatedAt).HasColumnType("datetime2");
         b.Property(x => x.CreatedBy).HasMaxLength(100);
         b.Property(x => x.UpdatedBy).HasMaxLength(100);
         b.Property(x => x.RowVersion).IsConcurrencyToken();
@@ -63,11 +63,11 @@ internal sealed class DocumentConfiguration : IEntityTypeConfiguration<Document>
         b.Property(x => x.BudgetWeight).HasPrecision(10, 4);
 
         b.Property(x => x.EditedBy).HasMaxLength(200);
-        b.Property(x => x.EditedAt).HasColumnType("timestamp without time zone");
+        b.Property(x => x.EditedAt).HasColumnType("datetime2");
 
-        b.Property(x => x.DeliveryMilestone).HasColumnType("timestamp without time zone");
-        b.Property(x => x.CreatedAt).HasColumnType("timestamp without time zone");
-        b.Property(x => x.UpdatedAt).HasColumnType("timestamp without time zone");
+        b.Property(x => x.DeliveryMilestone).HasColumnType("datetime2");
+        b.Property(x => x.CreatedAt).HasColumnType("datetime2");
+        b.Property(x => x.UpdatedAt).HasColumnType("datetime2");
         b.Property(x => x.CreatedBy).HasMaxLength(100);
         b.Property(x => x.UpdatedBy).HasMaxLength(100);
         b.Property(x => x.RowVersion).IsConcurrencyToken();
@@ -77,7 +77,10 @@ internal sealed class DocumentConfiguration : IEntityTypeConfiguration<Document>
         b.HasIndex(x => new { x.ProjectId, x.ActivityId });
         b.HasIndex(x => new { x.ProjectId, x.TidpFileId });
 
-        b.HasOne(x => x.Project).WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
+        // Restrict, not Cascade: a Document's TidpFileId is required, and TidpFile
+        // already cascades from Project, so this would otherwise be a second cascade
+        // path to the same table — SQL Server refuses to create that FK at all.
+        b.HasOne(x => x.Project).WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Restrict);
         b.HasOne(x => x.TidpFile).WithMany(x => x!.Documents).HasForeignKey(x => x.TidpFileId).OnDelete(DeleteBehavior.Cascade);
         b.HasOne(x => x.Discipline).WithMany().HasForeignKey(x => x.DisciplineId).OnDelete(DeleteBehavior.Restrict);
     }
@@ -95,7 +98,7 @@ internal sealed class DataExchangeConfiguration : IEntityTypeConfiguration<DataE
         b.Property(x => x.Geometrical).HasMaxLength(50);
         b.Property(x => x.NonGeometrical).HasMaxLength(200);
         b.Property(x => x.Predecessor).HasMaxLength(200);
-        b.Property(x => x.ExchangeDate).HasColumnType("timestamp without time zone");
+        b.Property(x => x.ExchangeDate).HasColumnType("datetime2");
         b.HasIndex(x => new { x.DocumentId, x.Number }).IsUnique();
         b.HasOne(x => x.Document)
             .WithMany(x => x!.Exchanges)

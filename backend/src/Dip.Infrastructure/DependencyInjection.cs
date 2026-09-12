@@ -17,7 +17,7 @@ public static class DependencyInjection
         var connectionString = configuration.GetConnectionString("Default")
             ?? throw new InvalidOperationException("ConnectionStrings:Default is required");
 
-        // Postgres (Neon) in every deployed environment; SQLite when a developer runs
+        // SQL Server in every deployed environment; SQLite when a developer runs
         // the system locally off a file. docs/local-dev.md explains the local path and
         // DatabaseProviderResolver how the choice is made.
         var provider = DatabaseProviderResolver.Resolve(configuration);
@@ -34,15 +34,13 @@ public static class DependencyInjection
             }
             else
             {
-                options.UseNpgsql(connectionString, npgsql =>
+                options.UseSqlServer(connectionString, sqlServer =>
                 {
-                    npgsql.MigrationsAssembly(typeof(DipDbContext).Assembly.GetName().Name);
-                    npgsql.EnableRetryOnFailure(3);
+                    sqlServer.MigrationsAssembly(typeof(DipDbContext).Assembly.GetName().Name);
+                    sqlServer.EnableRetryOnFailure(3);
                 });
             }
         });
-
-        services.AddSingleton<ISqlDialect>(new SqlDialect(provider));
 
         // Application depends on the abstraction; concrete DbContext is registered separately above.
         services.AddScoped<IDipDbContext>(sp => sp.GetRequiredService<DipDbContext>());

@@ -6,9 +6,6 @@ namespace Dip.Api.Health;
 
 // Can the API reach its database? Uses CanConnectAsync rather than a query, so a
 // health poll costs one round trip and never touches application data.
-//
-// On Neon's free tier the compute suspends when idle, so the first check after a
-// quiet period pays the wake-up; that is a slow Healthy, not an Unhealthy.
 public sealed class DatabaseHealthCheck : IHealthCheck
 {
     public const string Name = "database";

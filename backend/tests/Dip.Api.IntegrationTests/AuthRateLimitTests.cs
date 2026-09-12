@@ -13,7 +13,7 @@ namespace Dip.Api.IntegrationTests;
 //
 // The shared factory keeps the production-ish default of 20 per minute, which the
 // rest of the suite would otherwise trip while logging in. This class boots its own
-// host with a limit of 3 against the same schema, so the 429 is proven without
+// host with a limit of 3 against the same database, so the 429 is proven without
 // making every other test fragile.
 [Collection(IntegrationTestCollection.Name)]
 public class AuthRateLimitTests
@@ -37,12 +37,12 @@ public class AuthRateLimitTests
                 {
                     // See DipApiFactory: pin the provider so the local SQLite defaults
                     // never apply to a test host.
-                    ["Database:Provider"] = "Postgres",
+                    ["Database:Provider"] = "SqlServer",
                     ["ConnectionStrings:Default"] = _connectionString,
                     ["Jwt:Key"] = "integration-test-key-not-secret-32bytes-min!",
                     ["RateLimit:AuthPermitPerWindow"] = PermitLimit.ToString(),
                     ["RateLimit:AuthWindowSeconds"] = "60",
-                    // The shared fixture owns the schema; this host must not migrate it.
+                    // The shared fixture owns the database; this host must not migrate it.
                     ["Startup:SkipMigration"] = "true",
                 }));
 
@@ -53,7 +53,7 @@ public class AuthRateLimitTests
     [Fact]
     public async Task RepeatedLoginAttempts_AreRejectedWith429()
     {
-        if (!_shared.IsPostgresAvailable) return;
+        if (!_shared.IsSqlServerAvailable) return;
 
         using var factory = new RateLimitedFactory(_shared.ConnectionString);
         var client = factory.CreateClient();
@@ -75,7 +75,7 @@ public class AuthRateLimitTests
     [Fact]
     public async Task TheLimitCoversRefreshToo_ButNotTheRestOfTheApi()
     {
-        if (!_shared.IsPostgresAvailable) return;
+        if (!_shared.IsSqlServerAvailable) return;
 
         using var factory = new RateLimitedFactory(_shared.ConnectionString);
         var client = factory.CreateClient();

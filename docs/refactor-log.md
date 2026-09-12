@@ -595,3 +595,47 @@ Verified end to end on SQLite: schema created, `Qpac_1/` mirrored, all 40 workbo
 `dotnet test` 249/249 against a local Postgres, frontend 150/150.
 
 New docs: `docs/local-dev.md`.
+
+## R10 — Production moves from Neon Postgres to SQL Server (2026-09-12)
+
+Asked for: replace Neon Postgres with SQL Server everywhere it is used, after the Neon free
+tier's usable compute/storage ran out. No production data existed to carry over — see
+`docs/decisions/004-sql-server.md` for the full decision and what it changed.
+
+- `Npgsql.EntityFrameworkCore.PostgreSQL` → `Microsoft.EntityFrameworkCore.SqlServer`;
+  `DatabaseProvider` is now `SqlServer | Sqlite`. `ISqlDialect`/`SqlDialect` removed —
+  neither remaining provider has `ILIKE`, so the three search handlers call
+  `EF.Functions.Like` unconditionally now.
+- Postgres-only column types recast to their SQL Server equivalents across every
+  `IEntityTypeConfiguration`: `timestamp without time zone` → `datetime2`,
+  `jsonb`/`text` → `nvarchar(max)`. `SqliteModelTweaks` normalises the new types away
+  for local SQLite runs exactly as it did the old ones.
+- The four Npgsql-authored migrations are replaced by one fresh `Init` migration.
+  `AconexLineHashSql` (the raw-Postgres-SQL hash backfill used only by the deleted
+  `S3_LineHashAndAppend` migration) and the test pinning it are removed — nothing
+  replaces either, since a migration with no data to backfill needs no backfill SQL.
+- Applying the fresh migration to a real SQL Server surfaced two behavioral gaps
+  invisible from the code alone (both detailed in the ADR): SQL Server refuses a
+  foreign key that creates a second cascade path to a table already reachable by
+  another cascade, so `Document.ProjectId`, `ImportBatch.ProjectId`, and the two
+  shadow FKs EF infers on `DocumentSnapshot` (from `ProjectId`/`TidpFileId`
+  properties with no navigation, still enough to trigger EF's by-name FK
+  convention) are now `Restrict`; and SQL Server's default collation is
+  case-insensitive where Postgres's is case-sensitive, which collided
+  `SeedData`'s two deliberately-different-case `StatusMapping` rows — fixed with an
+  explicit case-sensitive collation on `AconexStatus`, cleared for SQLite (whose own
+  default collation is already case-sensitive).
+- Test infrastructure: `PostgresFixture` → `SqlServerFixture`, isolating each run in
+  its own throwaway database (`CREATE`/`DROP DATABASE`) rather than a schema — a
+  `Search Path=` connection-string trick has no SQL Server equivalent.
+  `TEST_POSTGRES_CONNECTION` → `TEST_SQLSERVER_CONNECTION`; `TestConnectionGuard`
+  refuses `databaseasp.net` (the ASPMonster instance) alongside `neon.tech`.
+- `docs/local-dev.md`, `docs/deploy.md` and `CLAUDE.md` updated for SQL Server.
+
+Verified against a real SQL Server 2022 container (`mcr.microsoft.com/mssql/server`, not
+Neon or ASPMonster): migration applies cleanly to an empty database, all 22 tables created.
+`dotnet build` clean (0 warnings), `dotnet test` 243/243 (3 Domain + 135 Engine + 66
+Infrastructure + 39 Api.IntegrationTests), the Infrastructure and Api.IntegrationTests suites
+running against that container rather than skipping.
+
+New docs: `docs/decisions/004-sql-server.md`.

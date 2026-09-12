@@ -25,8 +25,9 @@ internal sealed class AconexRevisionConfiguration : IEntityTypeConfiguration<Aco
         b.Property(x => x.Venue).HasMaxLength(200);
         b.Property(x => x.FloorLevel).HasMaxLength(100);
         b.Property(x => x.TransmittalIn).HasMaxLength(200);
-        // Postgres timestamp with microsecond precision (default 6). Sub-second precision preserved.
-        b.Property(x => x.DateModified).HasColumnType("timestamp without time zone");
+        // datetime2 defaults to 100ns precision — finer than Aconex ever provides, so
+        // sub-second Date Modified survives intact (hard rule 6).
+        b.Property(x => x.DateModified).HasColumnType("datetime2");
         b.Property(x => x.LineHash).HasMaxLength(64).IsRequired();
         // Identity is the whole line: an upload inserts what this index does not
         // already hold. See AconexLineHasher for why it is not (doc, rev, date).

@@ -7,7 +7,7 @@ using Xunit;
 
 namespace Dip.Api.IntegrationTests;
 
-// Phase 5.6 end-to-end against real Postgres: import a TIDP Live, recalculate in
+// Phase 5.6 end-to-end against real SQL Server: import a TIDP Live, recalculate in
 // chunks, then read every report endpoint and export one to xlsx.
 //
 // The numbers themselves are verified against Tracker.xlsx in the engine tests; this
@@ -25,7 +25,7 @@ public class ReportsFlowTests
     [Fact]
     public async Task Import_Recalculate_ThenEveryReportReadsTheSnapshots()
     {
-        if (!_factory.IsPostgresAvailable) return;
+        if (!_factory.IsSqlServerAvailable) return;
 
         var admin = await AuthedAdminAsync();
         var imported = await ImportTidpLiveAsync(admin, "TIDP-STL-AFCO.xlsx");
@@ -115,7 +115,7 @@ public class ReportsFlowTests
     [Fact]
     public async Task Viewer_CanReadAndExportReports_ButNotRecalculate()
     {
-        if (!_factory.IsPostgresAvailable) return;
+        if (!_factory.IsSqlServerAvailable) return;
 
         var admin = await AuthedAdminAsync();
         var viewer = await AuthedViewerAsync(admin);

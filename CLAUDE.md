@@ -1,6 +1,6 @@
 # CLAUDE.md — DIP (Digital Information Delivery Platform)
 
-.NET 8 Web API (controllers, vertical-slice CQRS, custom dispatcher) + React/TS (Vite, shadcn) that replaces an Excel-based TIDP → MIDP → Aconex → Tracker workflow for construction document control. PostgreSQL on Neon. The database is the only source of truth: the super admin uploads each source workbook once, engineers edit rows in the system, and nobody edits Excel afterwards. Aconex exports are appended, never replaced.
+.NET 8 Web API (controllers, vertical-slice CQRS, custom dispatcher) + React/TS (Vite, shadcn) that replaces an Excel-based TIDP → MIDP → Aconex → Tracker workflow for construction document control. SQL Server, hosted alongside the API on ASPMonster. The database is the only source of truth: the super admin uploads each source workbook once, engineers edit rows in the system, and nobody edits Excel afterwards. Aconex exports are appended, never replaced.
 
 ## Read first
 - `PLAN.md` — the original v2 plan, still authoritative for the Excel column maps, every formula translated to a rule, the engine rules and the expected sample numbers. Its § 1, 3.2, 3.4, 4, 6, 8 and 9 are superseded by `docs/refactor-plan.md`.
@@ -8,7 +8,8 @@
 - `docs/refactor-log.md` — what the v3 run actually did, per phase: commits, removals, deviations and the reasons for them.
 - `docs/decisions/003-no-drive-no-layers.md` — why Drive and the Draft/Live split were removed. It overrides the Drive and two-layer parts of `docs/refactor-plan.md`.
 - `docs/excel-analysis.md` — written in Phase 0; what the sample workbooks actually contain and any discrepancy with PLAN.md.
-- `docs/local-dev.md` — how to run the whole thing locally: the API on a SQLite file, the frontend against it, and what differs from Postgres.
+- `docs/local-dev.md` — how to run the whole thing locally: the API on a SQLite file, the frontend against it, and what differs from SQL Server.
+- `docs/decisions/004-sql-server.md` — why production moved from Neon Postgres to SQL Server, and what that changed.
 - `samples/` — TIDP-STL.xlsx, MIDP.xlsx, Tracker.xlsx. Every computed number must match these files.
 
 ## Hard rules
@@ -24,11 +25,11 @@
 10. No new NuGet/npm package without stating why.
 
 ## Stack
-.NET 8 · ASP.NET Core Web API (controllers) · SignalR (`/hubs/sync`) · hosted `BackgroundService` workers · EF Core 8 + Npgsql (Neon) · ASP.NET Identity + JWT · FluentValidation · Scrutor · ClosedXML · Serilog · Swashbuckle · xUnit + FluentAssertions
+.NET 8 · ASP.NET Core Web API (controllers) · SignalR (`/hubs/sync`) · hosted `BackgroundService` workers · EF Core 8 + SQL Server · ASP.NET Identity + JWT · FluentValidation · Scrutor · ClosedXML · Serilog · Swashbuckle · xUnit + FluentAssertions
 React 18 + TypeScript + Vite · Tailwind + shadcn/ui · TanStack Query + `@tanstack/react-virtual` · `@microsoft/signalr` · React Router · react-hook-form + zod · Recharts · Vitest
-Hosting: API on ASPMonster (IIS in-process — the pool must not idle out, see `docs/deploy.md` § 1.1), frontend on Vercel.
-Tests run against a local Postgres only; `TEST_POSTGRES_CONNECTION` pointing at Neon is refused.
-A local `dotnet run` uses **SQLite** (`App_Data/dip-local.db`, schema from `EnsureCreated`) and ignores any Postgres connection string in user-secrets — deployments and `dotnet ef` are unaffected. See `docs/local-dev.md`.
+Hosting: API and database both on ASPMonster (IIS in-process — the pool must not idle out, see `docs/deploy.md` § 1.1), frontend on Vercel.
+Tests run against a local SQL Server only; `TEST_SQLSERVER_CONNECTION` pointing at the production ASPMonster instance is refused. See `docs/decisions/004-sql-server.md`.
+A local `dotnet run` uses **SQLite** (`App_Data/dip-local.db`, schema from `EnsureCreated`) and ignores any SQL Server connection string in user-secrets — deployments and `dotnet ef` are unaffected. See `docs/local-dev.md`.
 
 ## Commands
 ```
@@ -36,9 +37,9 @@ cd backend && dotnet build && dotnet test
 dotnet ef migrations add <Name> -p src/Dip.Infrastructure -s src/Dip.Api
 dotnet ef database update      -p src/Dip.Infrastructure -s src/Dip.Api
 # Local run: SQLite at src/Dip.Api/App_Data/dip-local.db, generated dev credentials
-# printed at startup. No Postgres needed.
+# printed at startup. No SQL Server needed.
 ./scripts/run-local.sh                 # == dotnet run --project src/Dip.Api
 ./scripts/reset-local-db.sh            # after a model change: drop the local schema
-Database__Provider=Postgres dotnet run --project src/Dip.Api   # opt back into Neon
+Database__Provider=SqlServer dotnet run --project src/Dip.Api   # opt back into the shared DB
 cd frontend && npm i && npm run dev && npm run gen:api
 ```

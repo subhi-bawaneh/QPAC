@@ -10,13 +10,11 @@ public sealed class ListUsersHandler : IQueryHandler<ListUsersQuery, IReadOnlyCo
 {
     private readonly DipDbContext _db;
     private readonly UserManager<ApplicationUser> _users;
-    private readonly ISqlDialect _dialect;
 
-    public ListUsersHandler(DipDbContext db, UserManager<ApplicationUser> users, ISqlDialect dialect)
+    public ListUsersHandler(DipDbContext db, UserManager<ApplicationUser> users)
     {
         _db = db;
         _users = users;
-        _dialect = dialect;
     }
 
     public async Task<IReadOnlyCollection<UserListItem>> Handle(ListUsersQuery query, CancellationToken ct)
@@ -25,14 +23,10 @@ public sealed class ListUsersHandler : IQueryHandler<ListUsersQuery, IReadOnlyCo
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
             var term = query.Search.Trim();
-            // SQLite has no ILIKE, and its LIKE is case-insensitive for ASCII already.
-            q = _dialect.SupportsILike
-                ? q.Where(u =>
-                    (u.Email != null && EF.Functions.ILike(u.Email, $"%{term}%")) ||
-                    EF.Functions.ILike(u.FullName, $"%{term}%"))
-                : q.Where(u =>
-                    (u.Email != null && EF.Functions.Like(u.Email, $"%{term}%")) ||
-                    EF.Functions.Like(u.FullName, $"%{term}%"));
+            // Both SQL Server and SQLite are case-insensitive for LIKE already.
+            q = q.Where(u =>
+                (u.Email != null && EF.Functions.Like(u.Email, $"%{term}%")) ||
+                EF.Functions.Like(u.FullName, $"%{term}%"));
         }
 
         var users = await q.OrderBy(u => u.Email).ToListAsync(ct);

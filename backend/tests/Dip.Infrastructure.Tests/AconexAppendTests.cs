@@ -150,50 +150,6 @@ public class AconexAppendTests : IClassFixture<ImporterFixture>
         a.Should().NotBe(b);
     }
 
-
-    // The S3 migration backfills LineHash in SQL, because re-hashing 25k existing rows
-    // through C# would mean loading them all into a migration. That makes the SQL a
-    // second implementation of AconexLineHasher, and a second implementation that
-    // drifts would silently re-insert the entire history on the next upload. This
-    // pins the two together against the real export.
-    [Fact]
-    public async Task TheMigrationsSqlBackfill_ProducesTheSameHashAsTheHasher()
-    {
-        if (!_fixture.IsAvailable) return;
-
-        await ResetAsync();
-        await ImportAsync("Tracker.xlsx");
-
-        using var scope = _fixture.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<DipDbContext>();
-
-        var hash = Dip.Infrastructure.Persistence.AconexLineHashSql.HashExpression("a");
-
-        // EF1002 guards against interpolating user input into SQL. Nothing here comes
-        // from a user: the expression is built from a constant column list.
-#pragma warning disable EF1002
-        var mismatches = await db.Database
-            .SqlQueryRaw<int>(
-                $@"SELECT count(*)::int AS ""Value"" FROM ""AconexRevisions"" a
-                   WHERE a.""LineHash"" <> {hash}")
-            .SingleAsync();
-
-        if (mismatches != 0)
-        {
-            var sample = await db.Database
-                .SqlQueryRaw<string>(
-                    $@"SELECT (a.""AconexDocNo"" || ' | title=' || coalesce(a.""Title"", '')) AS ""Value""
-                       FROM ""AconexRevisions"" a
-                       WHERE a.""LineHash"" <> {hash}
-                       LIMIT 3")
-                .ToListAsync();
-            throw new Xunit.Sdk.XunitException(
-                $"{mismatches} rows differ between the migration's SQL and AconexLineHasher. "
-                + $"Samples: {string.Join(" // ", sample)}");
-        }
-#pragma warning restore EF1002
-    }
-
     // ------------------------------------------------------------------ helpers
 
     private async Task ResetAsync()

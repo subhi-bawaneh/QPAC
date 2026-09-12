@@ -2,13 +2,12 @@ using Microsoft.Extensions.Configuration;
 
 namespace Dip.Infrastructure.Persistence;
 
-// Which relational engine the context is talking to. Production is always Postgres
-// (Neon); Sqlite exists so a developer can run the whole system — API, workers,
-// frontend — on one file with no server, no Docker and no Neon branch.
-// See docs/local-dev.md.
+// Which relational engine the context is talking to. Production is always SQL Server;
+// Sqlite exists so a developer can run the whole system — API, workers, frontend — on
+// one file with no server, no Docker and no cloud database. See docs/local-dev.md.
 public enum DatabaseProvider
 {
-    Postgres,
+    SqlServer,
     Sqlite,
 }
 
@@ -25,30 +24,37 @@ public static class DatabaseProviderResolver
             return configured.Trim().ToLowerInvariant() switch
             {
                 "sqlite" or "sqlite3" => DatabaseProvider.Sqlite,
-                "postgres" or "postgresql" or "npgsql" => DatabaseProvider.Postgres,
+                "sqlserver" or "mssql" => DatabaseProvider.SqlServer,
                 _ => throw new InvalidOperationException(
-                    $"Unknown {ConfigKey} '{configured}'. Use 'Postgres' or 'Sqlite'."),
+                    $"Unknown {ConfigKey} '{configured}'. Use 'SqlServer' or 'Sqlite'."),
             };
         }
 
         return Infer(configuration.GetConnectionString("Default"));
     }
 
-    /// A Postgres connection string names a Host/Server; a SQLite one names a file.
+    /// A SQLite connection string names only a file ("Data Source=foo.db"); a SQL Server
+    /// one always carries a login or catalog alongside the server name.
     public static DatabaseProvider Infer(string? connectionString)
     {
-        if (string.IsNullOrWhiteSpace(connectionString)) return DatabaseProvider.Postgres;
+        if (string.IsNullOrWhiteSpace(connectionString)) return DatabaseProvider.SqlServer;
 
         var value = connectionString.ToLowerInvariant();
-        if (value.Contains("host=") || value.Contains("server=")) return DatabaseProvider.Postgres;
-        if (value.Contains("data source=")
-            || value.EndsWith(".db", StringComparison.Ordinal)
+        if (value.EndsWith(".db", StringComparison.Ordinal)
             || value.EndsWith(".sqlite", StringComparison.Ordinal)
             || value.EndsWith(".sqlite3", StringComparison.Ordinal))
         {
             return DatabaseProvider.Sqlite;
         }
 
-        return DatabaseProvider.Postgres;
+        if (value.Contains("data source=")
+            && !value.Contains("user id=")
+            && !value.Contains("initial catalog=")
+            && !value.Contains("password="))
+        {
+            return DatabaseProvider.Sqlite;
+        }
+
+        return DatabaseProvider.SqlServer;
     }
 }

@@ -1,12 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
     <ProjectReference Include="..\..\src\Dip.Api\Dip.Api.csproj" />
-    <!-- TestConnectionGuard: one definition of "never run against Neon" for both suites. -->
+    <!-- TestConnectionGuard: one definition of "never run against production" for both suites. -->
     <ProjectReference Include="..\Dip.Infrastructure.Tests\Dip.Infrastructure.Tests.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="8.0.10" />
-    <PackageReference Include="Npgsql" Version="8.0.5" />
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="5.2.2" />
   </ItemGroup>
 </Project>

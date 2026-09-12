@@ -20,7 +20,7 @@ public class AuthFlowTests
     [Fact]
     public async Task Login_WithWrongPassword_Returns401()
     {
-        if (!_factory.IsPostgresAvailable) return;
+        if (!_factory.IsSqlServerAvailable) return;
 
         var client = _factory.CreateClient();
         var response = await client.PostAsJsonAsync("/api/auth/login", new
@@ -35,7 +35,7 @@ public class AuthFlowTests
     [Fact]
     public async Task Login_WithMissingEmail_Returns400()
     {
-        if (!_factory.IsPostgresAvailable) return;
+        if (!_factory.IsSqlServerAvailable) return;
 
         var client = _factory.CreateClient();
         var response = await client.PostAsJsonAsync("/api/auth/login", new
@@ -50,7 +50,7 @@ public class AuthFlowTests
     [Fact]
     public async Task Login_WithCorrectCredentials_ReturnsTokenAndPermissions()
     {
-        if (!_factory.IsPostgresAvailable) return;
+        if (!_factory.IsSqlServerAvailable) return;
 
         var client = _factory.CreateClient();
         var response = await client.PostAsJsonAsync("/api/auth/login", new
@@ -80,7 +80,7 @@ public class AuthFlowTests
     [Fact]
     public async Task Me_WithValidToken_Returns200WithRolesAndPermissions()
     {
-        if (!_factory.IsPostgresAvailable) return;
+        if (!_factory.IsSqlServerAvailable) return;
 
         var client = _factory.CreateClient();
         var token = await LoginAndGetTokenAsync(client, DipApiFactory.SuperAdminEmail, DipApiFactory.SuperAdminPassword);
@@ -98,7 +98,7 @@ public class AuthFlowTests
     [Fact]
     public async Task Me_WithoutToken_Returns401()
     {
-        if (!_factory.IsPostgresAvailable) return;
+        if (!_factory.IsSqlServerAvailable) return;
 
         var client = _factory.CreateClient();
         var response = await client.GetAsync("/api/me");
@@ -108,7 +108,7 @@ public class AuthFlowTests
     [Fact]
     public async Task Refresh_WithValidToken_ReturnsNewPairAndRevokesOld()
     {
-        if (!_factory.IsPostgresAvailable) return;
+        if (!_factory.IsSqlServerAvailable) return;
 
         var client = _factory.CreateClient();
         var login = await client.PostAsJsonAsync("/api/auth/login", new

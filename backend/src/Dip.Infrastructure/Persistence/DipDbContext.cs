@@ -10,15 +10,6 @@ namespace Dip.Infrastructure.Persistence;
 public class DipDbContext
     : IdentityDbContext<ApplicationUser, ApplicationRole, Guid>, IDipDbContext
 {
-    static DipDbContext()
-    {
-        // Belt-and-suspenders next to ModuleInitializer.Init(). Setting the
-        // switch again here is a no-op if it was already on and guarantees it
-        // is on before this class's first instance is created — which is when
-        // Npgsql builds its DataSource and reads the switch value.
-        AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
-    }
-
     public DipDbContext(DbContextOptions<DipDbContext> options) : base(options) { }
 
     // Live entities
@@ -56,9 +47,9 @@ public class DipDbContext
 
         builder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
 
-        // Local development can run the whole system on a SQLite file instead of Neon.
-        // EF keys its model cache by provider, so this branch never touches the
-        // Postgres model. See SqliteModelTweaks and docs/local-dev.md.
+        // Local development can run the whole system on a SQLite file instead of SQL
+        // Server. EF keys its model cache by provider, so this branch never touches the
+        // SQL Server model. See SqliteModelTweaks and docs/local-dev.md.
         if (Database.IsSqlite())
         {
             SqliteModelTweaks.Apply(builder);
@@ -69,8 +60,9 @@ public class DipDbContext
     {
         base.ConfigureConventions(configurationBuilder);
 
-        // Force every DateTime and DateTime? property to Kind=Unspecified before
-        // it reaches Npgsql. See DateTimeUnspecifiedConverter and PLAN.md § 1.
+        // Force every DateTime and DateTime? property to Kind=Unspecified so the naive
+        // timestamps required by PLAN.md § 1 don't drift with the CLR Kind of the value
+        // handed in. See DateTimeUnspecifiedConverter.
         configurationBuilder.Properties<DateTime>().HaveConversion<DateTimeUnspecifiedConverter>();
         configurationBuilder.Properties<DateTime?>().HaveConversion<NullableDateTimeUnspecifiedConverter>();
     }

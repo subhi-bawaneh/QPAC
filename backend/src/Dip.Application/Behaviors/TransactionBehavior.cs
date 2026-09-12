@@ -5,8 +5,8 @@ namespace Dip.Application.Behaviors;
 
 // Applied only to commands. Saves changes on success; rolls back implicitly on
 // exception (EF Core discards tracked changes when the scope disposes). A real
-// TransactionScope isn't used here because SaveChangesAsync is transactional on
-// Npgsql and most command handlers touch a single unit of work.
+// TransactionScope isn't used here because SaveChangesAsync is already transactional
+// and most command handlers touch a single unit of work.
 public sealed class TransactionBehavior<TRequest, TResult> : IPipelineBehavior<TRequest, TResult>
     where TRequest : ICommand<TResult>
 {

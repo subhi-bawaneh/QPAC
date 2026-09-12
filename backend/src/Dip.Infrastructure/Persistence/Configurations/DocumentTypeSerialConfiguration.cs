@@ -11,11 +11,11 @@ internal sealed class DocumentTypeSerialConfiguration : IEntityTypeConfiguration
         b.ToTable("DocumentTypeSerials");
         b.HasKey(x => x.Id);
         b.Property(x => x.DocType).HasMaxLength(20).IsRequired();
-        b.Property(x => x.DeletedAt).HasColumnType("timestamp without time zone");
+        b.Property(x => x.DeletedAt).HasColumnType("datetime2");
         // Live codes only, so a type can be soft-deleted and re-created.
         b.HasIndex(x => new { x.ProjectId, x.DocType })
             .IsUnique()
-            .HasFilter("NOT \"IsDeleted\"");
+            .HasFilter("[IsDeleted] = 0");
         b.HasOne(x => x.Project).WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
     }
 }

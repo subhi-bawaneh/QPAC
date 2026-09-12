@@ -21,7 +21,7 @@ public class UpdateDocumentTests
     [Fact]
     public async Task ChangingTheSequence_RecomposesTheNumber_AndWritesAudit()
     {
-        if (!_factory.IsPostgresAvailable) return;
+        if (!_factory.IsSqlServerAvailable) return;
 
         var admin = await TestHelpers.AuthedAdminAsync(_factory);
         var world = await ImportLiveAsync(admin);
@@ -58,7 +58,7 @@ public class UpdateDocumentTests
     [Fact]
     public async Task ANumberAnotherRowHolds_Is409()
     {
-        if (!_factory.IsPostgresAvailable) return;
+        if (!_factory.IsSqlServerAvailable) return;
 
         var admin = await TestHelpers.AuthedAdminAsync(_factory);
         var world = await ImportLiveAsync(admin);
@@ -81,7 +81,7 @@ public class UpdateDocumentTests
     [Fact]
     public async Task Viewer_IsForbidden()
     {
-        if (!_factory.IsPostgresAvailable) return;
+        if (!_factory.IsSqlServerAvailable) return;
 
         var admin = await TestHelpers.AuthedAdminAsync(_factory);
         var viewer = await TestHelpers.AuthedAsync(_factory, admin, "Viewer", "document-viewer");

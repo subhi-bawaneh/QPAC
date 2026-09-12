@@ -23,7 +23,7 @@ public class AuditCoverageTests
     [Fact]
     public async Task EditingADocument_WritesOneRowPerChangedField_AndMarksTheRowEdited()
     {
-        if (!_factory.IsPostgresAvailable) return;
+        if (!_factory.IsSqlServerAvailable) return;
 
         var admin = await TestHelpers.AuthedAdminAsync(_factory);
         var projectId = await TestHelpers.NewProjectAsync(_factory, "Audit document test");
@@ -60,7 +60,7 @@ public class AuditCoverageTests
     [Fact]
     public async Task EveryPicklistMutation_WritesAnAuditRow()
     {
-        if (!_factory.IsPostgresAvailable) return;
+        if (!_factory.IsSqlServerAvailable) return;
 
         var admin = await TestHelpers.AuthedAdminAsync(_factory);
         var projectId = await TestHelpers.NewProjectAsync(_factory, "Audit picklist test");
@@ -108,7 +108,7 @@ public class AuditCoverageTests
     [Fact]
     public async Task EveryStatusMappingMutation_WritesAnAuditRow()
     {
-        if (!_factory.IsPostgresAvailable) return;
+        if (!_factory.IsSqlServerAvailable) return;
 
         var admin = await TestHelpers.AuthedAdminAsync(_factory);
         var projectId = await TestHelpers.NewProjectAsync(_factory, "Audit mapping test");
@@ -149,7 +149,7 @@ public class AuditCoverageTests
     [Fact]
     public async Task TheAuditEndpoint_ReturnsAnEntitysHistoryNewestFirst()
     {
-        if (!_factory.IsPostgresAvailable) return;
+        if (!_factory.IsSqlServerAvailable) return;
 
         var admin = await TestHelpers.AuthedAdminAsync(_factory);
         var projectId = await TestHelpers.NewProjectAsync(_factory, "Audit reader test");

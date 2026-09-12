@@ -61,11 +61,11 @@ try
                 : "Sign in as {Email} / {Password} (kept in App_Data/dev-secrets.json)",
             localDev.AdminEmail, localDev.AdminPassword);
 
-        if (localDev.ReplacedPostgresConnection)
+        if (localDev.ReplacedCloudConnection)
         {
             Log.Warning(
-                "Ignoring the configured Postgres connection string — a local run never "
-                + "touches the shared database. Export Database__Provider=Postgres to use it.");
+                "Ignoring the configured SQL Server connection string — a local run never "
+                + "touches the shared database. Export Database__Provider=SqlServer to use it.");
         }
     }
 
@@ -111,10 +111,10 @@ finally
     Log.CloseAndFlush();
 }
 
-// Postgres owns a migration history and is migrated. SQLite is a throwaway local file
-// with no migrations of its own (the Init migration is Npgsql SQL), so its schema comes
-// straight from the model — change the model and delete the file, see
-// backend/scripts/reset-local-db.sh.
+// SQL Server owns a migration history and is migrated. SQLite is a throwaway local file
+// with no migrations of its own (the Init migration is SQL Server SQL), so its schema
+// comes straight from the model and LocalSqliteSchema rebuilds the file whenever the
+// model has moved on. backend/scripts/reset-local-db.sh does the same thing by hand.
 static async Task InitializeDatabaseAsync(DipDbContext db, DatabaseProvider provider)
 {
     if (provider != DatabaseProvider.Sqlite)
@@ -124,15 +124,7 @@ static async Task InitializeDatabaseAsync(DipDbContext db, DatabaseProvider prov
     }
 
     var dataSource = new SqliteConnectionStringBuilder(db.Database.GetConnectionString()).DataSource;
-    var directory = Path.GetDirectoryName(Path.GetFullPath(dataSource));
-    if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
-
-    await db.Database.EnsureCreatedAsync();
-
-    // The import and sync workers write while the API serves requests; without WAL the
-    // default rollback journal locks readers out and they fail with SQLITE_BUSY.
-    await db.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;");
-    await db.Database.ExecuteSqlRawAsync("PRAGMA synchronous=NORMAL;");
+    await LocalSqliteSchema.EnsureCurrentAsync(db, dataSource);
 }
 
 // Per-check JSON so an operator can see which dependency is unhappy and why.

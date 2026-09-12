@@ -26,7 +26,7 @@ public class UploadFlowTests
     [Fact]
     public async Task Upload_CreatesTheFileRow_AndImportsItsDocuments()
     {
-        if (!_factory.IsPostgresAvailable) return;
+        if (!_factory.IsSqlServerAvailable) return;
 
         var admin = await TestHelpers.AuthedAdminAsync(_factory);
         var accepted = await UploadTidpAsync(admin, "TIDP-STL.xlsx");
@@ -50,7 +50,7 @@ public class UploadFlowTests
     [Fact]
     public async Task ReplacePreview_CountsTheEditedRowsThatWillBeDestroyed()
     {
-        if (!_factory.IsPostgresAvailable) return;
+        if (!_factory.IsSqlServerAvailable) return;
 
         var admin = await TestHelpers.AuthedAdminAsync(_factory);
         var accepted = await UploadTidpAsync(admin, "TIDP-STL-AFCO.xlsx");
@@ -80,7 +80,7 @@ public class UploadFlowTests
     [Fact]
     public async Task Replace_DumpsEveryOutgoingRowToTheAuditLogBeforeDeletingIt()
     {
-        if (!_factory.IsPostgresAvailable) return;
+        if (!_factory.IsSqlServerAvailable) return;
 
         var admin = await TestHelpers.AuthedAdminAsync(_factory);
         var accepted = await UploadTidpAsync(admin, "TIDP-STL-AFCO.xlsx");
@@ -119,7 +119,7 @@ public class UploadFlowTests
     [Fact]
     public async Task Delete_DumpsTheRowsAndRemovesThemFromTheRegister()
     {
-        if (!_factory.IsPostgresAvailable) return;
+        if (!_factory.IsSqlServerAvailable) return;
 
         var admin = await TestHelpers.AuthedAdminAsync(_factory);
         var accepted = await UploadTidpAsync(admin, "TIDP-STL-AFCO.xlsx");
@@ -152,7 +152,7 @@ public class UploadFlowTests
     [Fact]
     public async Task Admin_IsForbiddenFromUploadingReplacingOrDeleting()
     {
-        if (!_factory.IsPostgresAvailable) return;
+        if (!_factory.IsSqlServerAvailable) return;
 
         var superAdmin = await TestHelpers.AuthedAdminAsync(_factory);
         var admin = await TestHelpers.AuthedAsync(_factory, superAdmin, "Admin", "upload-admin");

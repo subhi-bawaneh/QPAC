@@ -6,7 +6,7 @@ namespace Dip.Api.IntegrationTests;
 // Two reasons:
 //   1. Serilog's static Log.Logger can only be initialised once per process;
 //      each fresh WebApplicationFactory retries and fails ("already frozen").
-//   2. Reduces DB schema churn — one CREATE/DROP SCHEMA per test run instead
+//   2. Reduces DB churn — one CREATE/DROP DATABASE per test run instead
 //      of once per class.
 [CollectionDefinition(Name)]
 public sealed class IntegrationTestCollection : ICollectionFixture<DipApiFactory>

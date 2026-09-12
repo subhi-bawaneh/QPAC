@@ -21,7 +21,7 @@ public class PicklistCrudTests
     [Fact]
     public async Task EveryListAppears_EvenWhenEmpty()
     {
-        if (!_factory.IsPostgresAvailable) return;
+        if (!_factory.IsSqlServerAvailable) return;
 
         var admin = await TestHelpers.AuthedAdminAsync(_factory);
         var projectId = await TestHelpers.NewProjectAsync(_factory, "Picklist groups");
@@ -36,7 +36,7 @@ public class PicklistCrudTests
     [Fact]
     public async Task Create_Update_Delete_Restore_RoundTrip()
     {
-        if (!_factory.IsPostgresAvailable) return;
+        if (!_factory.IsSqlServerAvailable) return;
 
         var admin = await TestHelpers.AuthedAdminAsync(_factory);
         var projectId = await TestHelpers.NewProjectAsync(_factory, "Picklist crud");
@@ -91,7 +91,7 @@ public class PicklistCrudTests
     [Fact]
     public async Task CreatingADeletedCode_RestoresTheSameRow()
     {
-        if (!_factory.IsPostgresAvailable) return;
+        if (!_factory.IsSqlServerAvailable) return;
 
         var admin = await TestHelpers.AuthedAdminAsync(_factory);
         var projectId = await TestHelpers.NewProjectAsync(_factory, "Picklist restore-on-create");
@@ -111,7 +111,7 @@ public class PicklistCrudTests
     [Fact]
     public async Task Reorder_SetsSortOrderOneToN()
     {
-        if (!_factory.IsPostgresAvailable) return;
+        if (!_factory.IsSqlServerAvailable) return;
 
         var admin = await TestHelpers.AuthedAdminAsync(_factory);
         var projectId = await TestHelpers.NewProjectAsync(_factory, "Picklist reorder");
@@ -139,7 +139,7 @@ public class PicklistCrudTests
     [Fact]
     public async Task StatusMappings_SupportCrudAndSoftDelete()
     {
-        if (!_factory.IsPostgresAvailable) return;
+        if (!_factory.IsSqlServerAvailable) return;
 
         var admin = await TestHelpers.AuthedAdminAsync(_factory);
         var projectId = await TestHelpers.NewProjectAsync(_factory, "Status mapping crud");
@@ -184,7 +184,7 @@ public class PicklistCrudTests
     [Fact]
     public async Task ReImportOfThePicklistsWorkbook_SkipsDeletedCodes()
     {
-        if (!_factory.IsPostgresAvailable) return;
+        if (!_factory.IsSqlServerAvailable) return;
 
         var admin = await TestHelpers.AuthedAdminAsync(_factory);
         var projectId = await TestHelpers.NewProjectAsync(_factory, "Picklist re-import");
@@ -217,7 +217,7 @@ public class PicklistCrudTests
     [Fact]
     public async Task Viewer_CannotWriteLists()
     {
-        if (!_factory.IsPostgresAvailable) return;
+        if (!_factory.IsSqlServerAvailable) return;
 
         var admin = await TestHelpers.AuthedAdminAsync(_factory);
         var viewer = await TestHelpers.AuthedAsync(_factory, admin, "Viewer", "lists-viewer");

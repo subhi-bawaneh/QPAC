@@ -12,16 +12,16 @@ using Xunit;
 
 namespace Dip.Infrastructure.Tests;
 
-// Reuses PostgresFixture (per-test-class isolated schema) + wires the
+// Reuses SqlServerFixture (per-test-class isolated database) + wires the
 // importer DI graph. On InitializeAsync it migrates + seeds so the QPAC
 // project + status mappings exist before the importers run.
 public sealed class ImporterFixture : IAsyncLifetime
 {
-    private readonly PostgresFixture _postgres = new();
+    private readonly SqlServerFixture _sqlServer = new();
     private ServiceProvider? _provider;
 
-    public bool IsAvailable => _postgres.IsAvailable;
-    public string Schema => _postgres.Schema;
+    public bool IsAvailable => _sqlServer.IsAvailable;
+    public string Database => _sqlServer.Database;
 
     public Guid QpacProjectId { get; private set; } = Guid.Empty;
 
@@ -29,7 +29,7 @@ public sealed class ImporterFixture : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        await _postgres.InitializeAsync();
+        await _sqlServer.InitializeAsync();
         if (!IsAvailable) return;
 
         var services = new ServiceCollection();
@@ -37,7 +37,7 @@ public sealed class ImporterFixture : IAsyncLifetime
         var config = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["ConnectionStrings:Default"] = _postgres.ConnectionString,
+                ["ConnectionStrings:Default"] = _sqlServer.ConnectionString,
             })
             .Build();
         services.AddSingleton<IConfiguration>(config);
@@ -56,6 +56,6 @@ public sealed class ImporterFixture : IAsyncLifetime
     public async Task DisposeAsync()
     {
         if (_provider is not null) await _provider.DisposeAsync();
-        await _postgres.DisposeAsync();
+        await _sqlServer.DisposeAsync();
     }
 }

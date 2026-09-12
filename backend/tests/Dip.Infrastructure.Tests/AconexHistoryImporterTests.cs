@@ -105,7 +105,7 @@ public class AconexHistoryImporterTests : IClassFixture<ImporterFixture>
 
         // Sub-second DateModified precision preserved. Sample the first 100 rows
         // and count those with non-zero fractional-second component. Fine to pull
-        // in-memory; the check is small and Npgsql has no DateDiffMillisecond translation.
+        // in-memory — the sample is small.
         var sample = await db.AconexRevisions
             .Where(a => a.ProjectId == _fixture.QpacProjectId)
             .OrderBy(a => a.Id)

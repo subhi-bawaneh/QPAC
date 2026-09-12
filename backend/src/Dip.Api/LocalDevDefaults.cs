@@ -12,15 +12,15 @@ public sealed record LocalDevSetup(
     string DatabaseFile,
     string AdminEmail,
     string? AdminPassword,
-    bool ReplacedPostgresConnection);
+    bool ReplacedCloudConnection);
 
-// Local development runs on a SQLite file, never on Neon: `dotnet run` brings up the
-// API on App_Data/dip-local.db, a seeded SuperAdmin you can actually log in as, and the
-// SQLite file so a developer needs neither Postgres nor a cloud account.
+// Local development runs on a SQLite file, never on the shared SQL Server: `dotnet run`
+// brings up the API on App_Data/dip-local.db, a seeded SuperAdmin you can actually log in
+// as, and the SQLite file so a developer needs neither SQL Server nor a cloud account.
 //
-// This deliberately overrides a Postgres ConnectionStrings:Default left in user-secrets
+// This deliberately overrides a SQL Server ConnectionStrings:Default left in user-secrets
 // — the point is that a local run never touches the shared database. Export
-// Database__Provider=Postgres to opt back in for a session.
+// Database__Provider=SqlServer to opt back in for a session.
 //
 // Hard rule 5 still holds — nothing secret is committed. The JWT key and the admin
 // password are generated on first run and kept in App_Data/dev-secrets.json, which is
@@ -33,8 +33,8 @@ public static class LocalDevDefaults
 
     /// Applies the defaults and returns what they were, or null when this run is not a
     /// plain local one: anything but Development, the `dotnet ef` design-time host
-    /// (migrations are authored against Postgres), and an explicit
-    /// Database:Provider=Postgres — which is also what the integration tests set.
+    /// (migrations are authored against SQL Server), and an explicit
+    /// Database:Provider=SqlServer — which is also what the integration tests set.
     public static LocalDevSetup? Apply(WebApplicationBuilder builder)
     {
         if (!builder.Environment.IsDevelopment()) return null;
@@ -42,7 +42,7 @@ public static class LocalDevDefaults
 
         var configuredProvider = builder.Configuration[DatabaseProviderResolver.ConfigKey];
         if (!string.IsNullOrWhiteSpace(configuredProvider)
-            && DatabaseProviderResolver.Resolve(builder.Configuration) == DatabaseProvider.Postgres)
+            && DatabaseProviderResolver.Resolve(builder.Configuration) == DatabaseProvider.SqlServer)
         {
             return null;
         }
@@ -54,7 +54,7 @@ public static class LocalDevDefaults
         var databaseFile = Path.Combine(appData, DatabaseFileName);
 
         // A SQLite connection string the developer set themselves is theirs to keep;
-        // a Postgres one (typically Neon, in user-secrets) is replaced.
+        // a SQL Server one (typically in user-secrets) is replaced.
         var configured = builder.Configuration.GetConnectionString("Default");
         var keepConfigured = !string.IsNullOrWhiteSpace(configured)
             && DatabaseProviderResolver.Infer(configured) == DatabaseProvider.Sqlite;

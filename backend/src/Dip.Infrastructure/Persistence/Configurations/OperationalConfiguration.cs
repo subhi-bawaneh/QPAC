@@ -27,14 +27,14 @@ internal sealed class DocumentSnapshotConfiguration : IEntityTypeConfiguration<D
         b.Property(x => x.AconexStatus).HasMaxLength(100);
         b.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
         b.Property(x => x.Transmittal).HasMaxLength(200);
-        b.Property(x => x.ComputedAt).HasColumnType("timestamp without time zone");
-        b.Property(x => x.DeliveryMilestone).HasColumnType("timestamp without time zone");
-        b.Property(x => x.PlannedStart).HasColumnType("timestamp without time zone");
-        b.Property(x => x.PlannedFinish).HasColumnType("timestamp without time zone");
-        b.Property(x => x.ActualStart).HasColumnType("timestamp without time zone");
-        b.Property(x => x.ActualFinish).HasColumnType("timestamp without time zone");
-        b.Property(x => x.SubmissionDate).HasColumnType("timestamp without time zone");
-        b.Property(x => x.DateModified).HasColumnType("timestamp without time zone");
+        b.Property(x => x.ComputedAt).HasColumnType("datetime2");
+        b.Property(x => x.DeliveryMilestone).HasColumnType("datetime2");
+        b.Property(x => x.PlannedStart).HasColumnType("datetime2");
+        b.Property(x => x.PlannedFinish).HasColumnType("datetime2");
+        b.Property(x => x.ActualStart).HasColumnType("datetime2");
+        b.Property(x => x.ActualFinish).HasColumnType("datetime2");
+        b.Property(x => x.SubmissionDate).HasColumnType("datetime2");
+        b.Property(x => x.DateModified).HasColumnType("datetime2");
         b.HasIndex(x => new { x.ProjectId, x.DocumentNumber });
         b.HasIndex(x => new { x.ProjectId, x.Discipline });
         b.HasIndex(x => new { x.ProjectId, x.Status });
@@ -43,6 +43,13 @@ internal sealed class DocumentSnapshotConfiguration : IEntityTypeConfiguration<D
             .WithOne()
             .HasForeignKey<DocumentSnapshot>(x => x.DocumentId)
             .OnDelete(DeleteBehavior.Cascade);
+        // ProjectId and TidpFileId are copied display columns, not navigations, but EF
+        // still infers a foreign key for each from the property name. Left as Cascade
+        // (the convention default) each would be a second cascade path to this table
+        // alongside Document, which SQL Server refuses — Restrict here, the one real
+        // path stays via Document.
+        b.HasOne<Project>().WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne<TidpFile>().WithMany().HasForeignKey(x => x.TidpFileId).OnDelete(DeleteBehavior.Restrict);
     }
 }
 
@@ -56,9 +63,13 @@ internal sealed class ImportBatchConfiguration : IEntityTypeConfiguration<Import
         b.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
         b.Property(x => x.FileName).HasMaxLength(500).IsRequired();
         b.Property(x => x.UploadedBy).HasMaxLength(200);
-        b.Property(x => x.ImportedAt).HasColumnType("timestamp without time zone");
-        b.Property(x => x.Log).HasColumnType("jsonb");
+        b.Property(x => x.ImportedAt).HasColumnType("datetime2");
+        b.Property(x => x.Log).HasColumnType("nvarchar(max)");
         b.HasIndex(x => new { x.ProjectId, x.ImportedAt });
+        // Restrict, not the Cascade EF would infer by convention: TidpFile already
+        // cascades from Project and SetNulls this row's TidpFileId, so a Cascade here
+        // too would be a second path to the same table — SQL Server refuses that FK.
+        b.HasOne(x => x.Project).WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Restrict);
         b.HasOne(x => x.TidpFile).WithMany().HasForeignKey(x => x.TidpFileId).OnDelete(DeleteBehavior.SetNull);
     }
 }
@@ -74,10 +85,10 @@ internal sealed class AuditLogConfiguration : IEntityTypeConfiguration<AuditLog>
         b.Property(x => x.Field).HasMaxLength(100);
         // Unbounded: a Replaced or Deleted entry carries the whole outgoing row as
         // JSON, which is longer than any field-level diff.
-        b.Property(x => x.OldValue).HasColumnType("text");
-        b.Property(x => x.NewValue).HasColumnType("text");
+        b.Property(x => x.OldValue).HasColumnType("nvarchar(max)");
+        b.Property(x => x.NewValue).HasColumnType("nvarchar(max)");
         b.Property(x => x.UserId).HasMaxLength(100);
-        b.Property(x => x.At).HasColumnType("timestamp without time zone");
+        b.Property(x => x.At).HasColumnType("datetime2");
         b.HasIndex(x => new { x.ProjectId, x.EntityName, x.EntityId });
         b.HasIndex(x => x.At);
     }
@@ -93,9 +104,9 @@ internal sealed class RefreshTokenConfiguration : IEntityTypeConfiguration<Refre
         b.Property(x => x.CreatedByIp).HasMaxLength(64);
         b.Property(x => x.RevokedByIp).HasMaxLength(64);
         b.Property(x => x.ReplacedByToken).HasMaxLength(256);
-        b.Property(x => x.CreatedAt).HasColumnType("timestamp without time zone");
-        b.Property(x => x.ExpiresAt).HasColumnType("timestamp without time zone");
-        b.Property(x => x.RevokedAt).HasColumnType("timestamp without time zone");
+        b.Property(x => x.CreatedAt).HasColumnType("datetime2");
+        b.Property(x => x.ExpiresAt).HasColumnType("datetime2");
+        b.Property(x => x.RevokedAt).HasColumnType("datetime2");
         b.Ignore(x => x.IsActive);
         b.HasIndex(x => x.Token).IsUnique();
         b.HasOne(x => x.User).WithMany(x => x!.RefreshTokens).HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
@@ -107,6 +118,6 @@ internal sealed class ApplicationUserConfiguration : IEntityTypeConfiguration<Ap
     public void Configure(EntityTypeBuilder<ApplicationUser> b)
     {
         b.Property(x => x.FullName).HasMaxLength(200);
-        b.Property(x => x.CreatedAt).HasColumnType("timestamp without time zone");
+        b.Property(x => x.CreatedAt).HasColumnType("datetime2");
     }
 }

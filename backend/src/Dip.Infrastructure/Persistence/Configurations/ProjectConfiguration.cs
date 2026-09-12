@@ -16,8 +16,8 @@ internal sealed class ProjectConfiguration : IEntityTypeConfiguration<Project>
         b.Property(x => x.Organisation).HasMaxLength(200);
         b.Property(x => x.Approver).HasMaxLength(200);
         b.Property(x => x.CostCenter).HasMaxLength(50);
-        b.Property(x => x.ReportDate).HasColumnType("timestamp without time zone");
-        b.Property(x => x.BaselineStartDate).HasColumnType("timestamp without time zone");
+        b.Property(x => x.ReportDate).HasColumnType("datetime2");
+        b.Property(x => x.BaselineStartDate).HasColumnType("datetime2");
         b.Property(x => x.WeightPending).HasPrecision(6, 4);
         b.Property(x => x.WeightSub1).HasPrecision(6, 4);
         b.Property(x => x.WeightSub2).HasPrecision(6, 4);

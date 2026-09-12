@@ -13,11 +13,11 @@ using Xunit;
 namespace Dip.Infrastructure.Tests;
 
 [Trait("Category", "Integration")]
-public class MigrationTests : IClassFixture<PostgresFixture>
+public class MigrationTests : IClassFixture<SqlServerFixture>
 {
-    private readonly PostgresFixture _fixture;
+    private readonly SqlServerFixture _fixture;
 
-    public MigrationTests(PostgresFixture fixture)
+    public MigrationTests(SqlServerFixture fixture)
     {
         _fixture = fixture;
     }
@@ -43,7 +43,7 @@ public class MigrationTests : IClassFixture<PostgresFixture>
     [Fact]
     public async Task Migration_Applies_And_Seeder_Populates()
     {
-        SkipIfNoPostgres.RequireConnection(_fixture);
+        SkipIfNoSqlServer.RequireConnection(_fixture);
         await using var provider = BuildProvider();
         using var scope = provider.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DipDbContext>();
@@ -113,7 +113,7 @@ public class MigrationTests : IClassFixture<PostgresFixture>
     [Fact]
     public async Task Seeder_Is_Idempotent()
     {
-        SkipIfNoPostgres.RequireConnection(_fixture);
+        SkipIfNoSqlServer.RequireConnection(_fixture);
         await using var provider = BuildProvider();
         using var scope1 = provider.CreateScope();
         var db1 = scope1.ServiceProvider.GetRequiredService<DipDbContext>();

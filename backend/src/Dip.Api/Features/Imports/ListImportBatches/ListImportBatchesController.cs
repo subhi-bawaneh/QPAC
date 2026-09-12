@@ -14,11 +14,11 @@ public sealed class ListImportBatchesController : ApiControllerBase
     public async Task<ActionResult<IReadOnlyCollection<ImportBatchSummary>>> Get(
         Guid projectId,
         [FromQuery] ImportKind? kind,
-        [FromQuery] Guid? folderFileId,
+        [FromQuery] Guid? tidpFileId,
         [FromQuery] int take = 50,
         CancellationToken ct = default)
     {
-        var result = await Dispatcher.Query(new ListImportBatchesQuery(projectId, kind, folderFileId, take), ct);
+        var result = await Dispatcher.Query(new ListImportBatchesQuery(projectId, kind, tidpFileId, take), ct);
         return Ok(result);
     }
 }

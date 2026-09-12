@@ -23,7 +23,7 @@ public class PermissionGatingTests
     [Fact]
     public async Task Viewer_CannotListUsers()
     {
-        if (!_factory.IsPostgresAvailable) return;
+        if (!_factory.IsSqlServerAvailable) return;
 
         var client = _factory.CreateClient();
         var adminToken = await LoginAsAsync(client, DipApiFactory.SuperAdminEmail, DipApiFactory.SuperAdminPassword);
@@ -45,7 +45,7 @@ public class PermissionGatingTests
     [Fact]
     public async Task Editor_CannotCreateUsers()
     {
-        if (!_factory.IsPostgresAvailable) return;
+        if (!_factory.IsSqlServerAvailable) return;
 
         var client = _factory.CreateClient();
         var adminToken = await LoginAsAsync(client, DipApiFactory.SuperAdminEmail, DipApiFactory.SuperAdminPassword);
@@ -72,7 +72,7 @@ public class PermissionGatingTests
     [Fact]
     public async Task SuperAdmin_CanCreateAssignRoleAndSetDisciplines()
     {
-        if (!_factory.IsPostgresAvailable) return;
+        if (!_factory.IsSqlServerAvailable) return;
 
         var client = _factory.CreateClient();
         var adminToken = await LoginAsAsync(client, DipApiFactory.SuperAdminEmail, DipApiFactory.SuperAdminPassword);

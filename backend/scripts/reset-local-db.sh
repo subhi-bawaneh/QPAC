@@ -2,8 +2,10 @@
 # Deletes the local SQLite database so the next run recreates it from the current model.
 #
 # The local schema comes from EnsureCreated, not from migrations (the Init migration is
-# Npgsql SQL), so after any change to the entities or their configuration the file has
-# to go. Drive is re-mirrored and the workbooks re-imported on the next start.
+# SQL Server SQL), so after any change to the entities or their configuration the file has
+# to go. The API now does this for you — LocalSqliteSchema compares a fingerprint of the
+# model against the one stored in the file and rebuilds when they differ — so this script
+# is for forcing a clean database, not for recovering from a schema change.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."

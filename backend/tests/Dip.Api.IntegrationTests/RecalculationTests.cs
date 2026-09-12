@@ -20,7 +20,7 @@ public class RecalculationTests
     [Fact]
     public async Task Documents_GetSnapshots_CarryingTheDisplayColumns()
     {
-        if (!_factory.IsPostgresAvailable) return;
+        if (!_factory.IsSqlServerAvailable) return;
 
         var projectId = await TestHelpers.NewProjectAsync(_factory, "Recalculation test");
         var (tidpFileId, documentIds) = await TestHelpers.SeedDocumentsAsync(_factory, projectId, count: 4);
@@ -47,7 +47,7 @@ public class RecalculationTests
     [Fact]
     public async Task DeletingADocument_RemovesItsSnapshot()
     {
-        if (!_factory.IsPostgresAvailable) return;
+        if (!_factory.IsSqlServerAvailable) return;
 
         var projectId = await TestHelpers.NewProjectAsync(_factory, "Snapshot cascade test");
         var (_, documentIds) = await TestHelpers.SeedDocumentsAsync(_factory, projectId, count: 3);

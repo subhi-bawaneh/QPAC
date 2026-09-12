@@ -21,7 +21,7 @@ public class HealthCheckTests
     [Fact]
     public async Task Health_ReportsTheDatabaseOnly()
     {
-        if (!_factory.IsPostgresAvailable) return;
+        if (!_factory.IsSqlServerAvailable) return;
 
         var client = _factory.CreateClient();
         var response = await client.GetAsync("/health");
@@ -33,7 +33,7 @@ public class HealthCheckTests
     [Fact]
     public async Task HealthDetail_ReportsEachDependencySeparately()
     {
-        if (!_factory.IsPostgresAvailable) return;
+        if (!_factory.IsSqlServerAvailable) return;
 
         var client = _factory.CreateClient();
         var response = await client.GetAsync("/health/detail");
@@ -54,7 +54,7 @@ public class HealthCheckTests
     [Fact]
     public async Task HealthEndpoints_NeedNoAuthentication()
     {
-        if (!_factory.IsPostgresAvailable) return;
+        if (!_factory.IsSqlServerAvailable) return;
 
         var client = _factory.CreateClient();
 

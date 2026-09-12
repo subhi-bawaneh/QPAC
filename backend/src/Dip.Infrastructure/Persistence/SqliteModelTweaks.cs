@@ -2,24 +2,21 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Dip.Infrastructure.Persistence;
 
-// The entity configurations are written for Postgres — that is the production engine
+// The entity configurations are written for SQL Server — that is the production engine
 // and the one PLAN.md § 1 specifies. Rather than sprinkle `if (sqlite)` through every
-// IEntityTypeConfiguration, the Postgres-only bits are normalised away here in one
+// IEntityTypeConfiguration, the SQL-Server-only bits are normalised away here in one
 // pass when the context happens to be running on SQLite for local development.
 //
-// Nothing in this file runs on Postgres: EF caches a model per provider, so the
+// Nothing in this file runs on SQL Server: EF caches a model per provider, so the
 // production model is byte-for-byte what the configurations declare.
 internal static class SqliteModelTweaks
 {
     // Store types SQLite has never heard of. Clearing them lets the SQLite provider
-    // pick its own affinity (TEXT for timestamps and json, BLOB for bytea).
-    private static readonly HashSet<string> PostgresOnlyColumnTypes = new(StringComparer.OrdinalIgnoreCase)
+    // pick its own affinity (TEXT for timestamps and JSON text).
+    private static readonly HashSet<string> SqlServerOnlyColumnTypes = new(StringComparer.OrdinalIgnoreCase)
     {
-        "timestamp without time zone",
-        "timestamp with time zone",
-        "jsonb",
-        "json",
-        "bytea",
+        "datetime2",
+        "nvarchar(max)",
     };
 
     public static void Apply(ModelBuilder builder)
@@ -29,9 +26,16 @@ internal static class SqliteModelTweaks
             foreach (var property in entityType.GetDeclaredProperties())
             {
                 var columnType = property.GetColumnType();
-                if (columnType is not null && PostgresOnlyColumnTypes.Contains(columnType))
+                if (columnType is not null && SqlServerOnlyColumnTypes.Contains(columnType))
                 {
                     property.SetColumnType(null);
+                }
+
+                // A SQL Server collation name (e.g. on StatusMapping.AconexStatus) means
+                // nothing to SQLite and would surface as "no such collation sequence".
+                if (property.GetCollation() is not null)
+                {
+                    property.SetCollation(null);
                 }
 
                 // SQLite has no decimal type: EF stores decimals as TEXT, which orders

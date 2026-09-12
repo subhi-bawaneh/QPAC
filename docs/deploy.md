@@ -11,7 +11,7 @@ on the API and `VITE_API_URL` on the frontend — and nothing else.
 ### Build the package
 
 The `backend-publish` workflow produces `dip-api.zip` on every push to `main`, and
-runs the full test suite against a real Postgres first. Download it from the run's
+runs the full test suite against a real SQL Server first. Download it from the run's
 artifacts. To build the same zip locally:
 
 ```bash
@@ -22,7 +22,7 @@ cd publish && zip -r ../dip-api.zip .
 
 `web.config` ships in the package. It selects `hostingModel="inprocess"`, so the app
 runs inside the IIS worker process — no reverse-proxy hop, and one process holding
-the Npgsql pool, the Drive-sync and import workers, and the SignalR hub.
+the SQL Server connection pool, the Drive-sync and import workers, and the SignalR hub.
 
 ### Deploy
 
@@ -62,8 +62,8 @@ Everything is read at **startup** — changing any of these needs a restart.
 
 | Variable | Required | What it is |
 |---|---|---|
-| `ConnectionStrings__Default` | yes | Neon connection string, Npgsql key/value format |
-| `Database__Provider` | no | `Postgres` (the default anywhere but Development). `Sqlite` is a local-development mode only — see `docs/local-dev.md` |
+| `ConnectionStrings__Default` | yes | SQL Server connection string (ADO.NET key/value format) |
+| `Database__Provider` | no | `SqlServer` (the default anywhere but Development). `Sqlite` is a local-development mode only — see `docs/local-dev.md` |
 | `Jwt__Key` | yes | ≥ 32 bytes of random secret; signs access tokens |
 | `Cors__Origins` | yes | Comma-separated frontend origins |
 | `Seed__AdminEmail` | first boot | Email of the SuperAdmin created on an empty database |
@@ -79,27 +79,27 @@ changing `Seed__AdminPassword` does nothing — the seeder never overwrites an
 existing user. Reset a forgotten password from the Users screen with another
 admin account, or against the database directly.
 
-### The database — Neon
+### The database — SQL Server
 
-Npgsql wants key/value format, **not** the `postgresql://` URI. Neon's console has a
-.NET / ADO.NET snippet that emits it directly:
+The API and the database are both provisioned on the same ASPMonster account. The
+connection string is ADO.NET `SqlClient` key/value format:
 
 ```
-Host=ep-xxxx.eu-central-1.aws.neon.tech;Database=dip;Username=dip_owner;Password=...;SSL Mode=Require;Timeout=30
+Server=dbNNNNN.databaseasp.net;Database=dbNNNNN;User Id=dbNNNNN;Password=...;Encrypt=False;MultipleActiveResultSets=True;
 ```
 
-- **Use the direct endpoint, not `-pooler`.** This is a long-lived process with
-  Npgsql's own client-side pool that runs EF migrations at startup; PgBouncer's
-  transaction pooling is the wrong side of that trade. The pooled endpoint suits
-  serverless bursts of short connections, which is not this shape.
-- **Scale-to-zero:** the free tier suspends when idle, so the first request after a
-  quiet period pays the wake-up. `EnableRetryOnFailure(3)` is configured, and a
-  generous `Timeout=30` stops the first attempt failing before the wake completes.
-  Expect the first request of the morning to be slow; that is not a fault.
+- **`Encrypt=False`** matches what the ASPMonster instance actually offers — there is
+  no TLS listener on the shared SQL Server. If a future plan or a different host
+  offers TLS, switch to `Encrypt=True;TrustServerCertificate=true` rather than
+  leaving traffic unencrypted by default.
+- `EnableRetryOnFailure(3)` is configured for the same reason it was under Neon:
+  shared hosting can drop an idle connection, and a transient retry is cheaper than
+  a failed request.
 - **The user needs DDL rights** — `Program.cs` runs `MigrateAsync()` on every boot
   unless `Startup__SkipMigration=true`.
-- Start with `SSL Mode=Require` alone. Add `Trust Server Certificate=true` only if
-  the host's certificate store actually throws a chain error.
+- `MultipleActiveResultSets=True` is required: EF Core issues concurrent commands on
+  one connection in a few places (notably ASP.NET Identity's user/role lookups), and
+  SQL Server refuses a second command on a connection without MARS.
 
 ### Google Drive (optional)
 
@@ -235,5 +235,5 @@ the `drive` check's description (`lastRunFinishedAt`, `queuedImports`).
 - **A restart loses only the queue, not the work.** `ImportWorker` re-queues every
   file still `NotImported` or `Outdated` when it starts.
 - **Migrations run at startup.** Deploying a build with a new migration applies it on
-  the first request after the restart. Take a Neon branch first if the migration is
-  destructive.
+  the first request after the restart. Take a database backup first if the migration
+  is destructive.

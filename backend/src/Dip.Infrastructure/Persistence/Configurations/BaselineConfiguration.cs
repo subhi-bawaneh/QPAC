@@ -20,10 +20,10 @@ internal sealed class BaselineActivityConfiguration : IEntityTypeConfiguration<B
         b.Property(x => x.WbsLevel6).HasMaxLength(150);
         b.Property(x => x.WbsLevel7).HasMaxLength(150);
         b.Property(x => x.Type).HasConversion<string>().HasMaxLength(20);
-        b.Property(x => x.Start).HasColumnType("timestamp without time zone");
-        b.Property(x => x.Finish).HasColumnType("timestamp without time zone");
+        b.Property(x => x.Start).HasColumnType("datetime2");
+        b.Property(x => x.Finish).HasColumnType("datetime2");
         b.Property(x => x.EditedBy).HasMaxLength(200);
-        b.Property(x => x.EditedAt).HasColumnType("timestamp without time zone");
+        b.Property(x => x.EditedAt).HasColumnType("datetime2");
         b.HasIndex(x => new { x.ProjectId, x.ActivityCode }).IsUnique();
         b.HasIndex(x => new { x.ProjectId, x.Package, x.Type });
         b.HasOne(x => x.Project).WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
