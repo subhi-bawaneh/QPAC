@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import { Upload } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
 import { Spinner } from '@/shared/ui/spinner'
-import { InitialUploadState } from '@/shared/ui/InitialUploadState'
 import { ReplaceDialog } from '@/shared/ui/ReplaceDialog'
 import { useAuth } from '@/shared/auth/useAuth'
 import { Permissions } from '@/shared/auth/permissions'
@@ -13,9 +12,12 @@ import { formatDate, formatNumber } from '@/shared/lib/utils'
 import { Breadcrumb, type Crumb } from './Breadcrumb'
 import { DisciplineSidebar } from './DisciplineSidebar'
 import { IconGrid, type GridItem } from './IconGrid'
+import { TidpFolderUploadDialog } from './TidpFolderUploadDialog'
+import { TidpFolderSyncResultView } from './TidpFolderSyncResult'
 import {
-  useDeleteTidp, useDisciplines, useReplacePreview, useReplaceTidp, useTidpFiles, useUploadTidp,
+  useDeleteTidp, useDisciplines, useReplacePreview, useReplaceTidp, useTidpFiles, useSyncTidpFolder, useTidpFolderSyncStatus,
 } from './api'
+import { buildManifestFromWebkitDirectory } from './manifestBuilder'
 
 // Two levels: disciplines, then the files inside one. There is no Drive root and no tree
 // of arbitrary depth any more, because there is no Drive — a TIDP belongs to a
@@ -27,17 +29,19 @@ export function TidpExplorerPage() {
 
   const disciplines = useDisciplines(QPAC_PROJECT_ID)
   const files = useTidpFiles(QPAC_PROJECT_ID)
-  const upload = useUploadTidp(QPAC_PROJECT_ID)
   const replace = useReplaceTidp()
   const remove = useDeleteTidp()
+  const syncFolder = useSyncTidpFolder(QPAC_PROJECT_ID)
+  const [syncId, setSyncId] = useState<string | null>(null)
+  const syncStatus = useTidpFolderSyncStatus(QPAC_PROJECT_ID, syncId)
 
   const [disciplineId, setDisciplineId] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [pending, setPending] = useState<{ id: string; action: 'replace' | 'delete' } | null>(null)
+  const [showFolderUpload, setShowFolderUpload] = useState(false)
 
   const preview = useReplacePreview(pending?.id ?? null)
   const replacement = useRef<File | null>(null)
-  const uploadInput = useRef<HTMLInputElement>(null)
   const replaceInput = useRef<HTMLInputElement>(null)
 
   const current = disciplines.data?.find((d) => d.id === disciplineId) ?? null
@@ -91,7 +95,53 @@ export function TidpExplorerPage() {
     setPending(null)
   }
 
+  async function handleFolderSelected(folderName: string, fileList: FileList) {
+    try {
+      const { manifest, files } = await buildManifestFromWebkitDirectory(fileList, folderName)
+
+      if (manifest.files.length === 0) {
+        throw new Error('No .xlsx or .xlsm files found')
+      }
+
+      const result = await syncFolder.mutateAsync({ manifest, files })
+      setSyncId(result.syncId)
+    } catch (error) {
+      console.error('Folder sync error:', error)
+    }
+  }
+
   if (disciplines.isPending || files.isPending) return <Spinner />
+
+  // Show result view if sync is in progress or completed
+  if (syncId && syncStatus.data) {
+    const isSyncComplete = syncStatus.data.added + syncStatus.data.updated + syncStatus.data.skipped + syncStatus.data.missing + syncStatus.data.failed === syncStatus.data.totalFiles
+    return (
+      <div className="space-y-4">
+        <Breadcrumb
+          crumbs={crumbs}
+          onNavigate={(id) => {
+            setDisciplineId(id)
+            setSelectedId(null)
+          }}
+        />
+        {isSyncComplete ? (
+          <TidpFolderSyncResultView
+            result={syncStatus.data}
+            onDone={() => {
+              setSyncId(null)
+              void disciplines.refetch()
+              void files.refetch()
+            }}
+          />
+        ) : (
+          <div className="text-center py-8">
+            <Spinner />
+            <p className="text-sm text-muted-foreground mt-2">Syncing folder...</p>
+          </div>
+        )}
+      </div>
+    )
+  }
 
   const hasAnyFile = (files.data?.length ?? 0) > 0
 
@@ -107,23 +157,18 @@ export function TidpExplorerPage() {
         />
 
         {canUpload ? (
-          <Button onClick={() => uploadInput.current?.click()} disabled={upload.isPending}>
+          <Button onClick={() => setShowFolderUpload(true)} disabled={syncFolder.isPending}>
             <Upload className="h-4 w-4" aria-hidden />
-            {upload.isPending ? 'Uploading…' : 'Upload TIDP'}
+            {syncFolder.isPending ? 'Uploading…' : 'Upload TIDPs Folder'}
           </Button>
         ) : null}
       </div>
 
-      <input
-        ref={uploadInput}
-        type="file"
-        accept=".xlsx"
-        className="hidden"
-        onChange={(event) => {
-          const file = event.target.files?.[0]
-          if (file) void upload.mutateAsync(file)
-          event.target.value = ''
-        }}
+      <TidpFolderUploadDialog
+        open={showFolderUpload}
+        onClose={() => setShowFolderUpload(false)}
+        onFolderSelected={handleFolderSelected}
+        isLoading={syncFolder.isPending}
       />
 
       <input
@@ -138,18 +183,23 @@ export function TidpExplorerPage() {
         }}
       />
 
-      {upload.isError ? (
-        <p className="text-sm text-destructive">{apiErrorMessage(upload.error)}</p>
+      {syncFolder.isError ? (
+        <p className="text-sm text-destructive">{apiErrorMessage(syncFolder.error)}</p>
       ) : null}
 
       {!hasAnyFile ? (
-        <InitialUploadState
-          title="No TIDP workbook yet"
-          description="Upload one TIDP workbook per discipline. Its rows become the register, and engineers edit them here from then on."
-          canUpload={canUpload}
-          pending={upload.isPending}
-          onSelect={(file) => void upload.mutateAsync(file)}
-        />
+        <div className="rounded-lg border border-border bg-card p-6 text-center">
+          <h3 className="font-semibold mb-2">No TIDP folder uploaded yet</h3>
+          <p className="text-sm text-muted-foreground mb-4">
+            Click the "Upload TIDPs Folder" button to sync your TIDP workbooks.
+          </p>
+          {canUpload && (
+            <Button onClick={() => setShowFolderUpload(true)} disabled={syncFolder.isPending}>
+              <Upload className="h-4 w-4 mr-2" aria-hidden />
+              Upload TIDPs Folder
+            </Button>
+          )}
+        </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-[13rem_minmax(0,1fr)]">
           <aside className="hidden md:block">

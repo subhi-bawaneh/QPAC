@@ -7,7 +7,10 @@ public sealed class SyncTidpFolderValidator : AbstractValidator<SyncTidpFolderCo
     public SyncTidpFolderValidator()
     {
         RuleFor(x => x.ProjectId).NotEmpty();
-        RuleFor(x => x.RootName).MaximumLength(400);
+        RuleFor(x => x.RootName)
+            .MaximumLength(400)
+            .Must(name => name == "02.TIDPs")
+            .WithMessage("The folder must be named exactly '02.TIDPs'");
 
         // An empty upload is refused rather than processed: it is indistinguishable
         // from an upload of a folder that has been emptied, and processing it would

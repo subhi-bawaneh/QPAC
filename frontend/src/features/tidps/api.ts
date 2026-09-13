@@ -1,6 +1,37 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/shared/api/client'
 import type { Discipline, DeleteResult, ReplacePreview, TidpFile, UploadAccepted } from '@/shared/api/types'
+import type { TidpFolderManifest } from './manifestBuilder'
+
+export interface TidpFolderSyncFile {
+  relativePath: string
+  action: 'Added' | 'Updated' | 'Skipped' | 'Missing' | 'Failed'
+  ownerName?: string
+  ownerType?: string
+  disciplineCode?: string
+  disciplineName?: string
+  error?: string
+  tidpFileId?: string
+  batchId?: string
+  movedTo?: string
+  movedFrom?: string
+  rowsImported?: number
+  rowsRead?: number
+}
+
+export interface TidpFolderSyncResult {
+  syncId: string
+  projectId: string
+  rootName: string
+  startedAt: string
+  totalFiles: number
+  added: number
+  updated: number
+  skipped: number
+  missing: number
+  failed: number
+  files: TidpFolderSyncFile[]
+}
 
 // Every uploaded TIDP workbook, with its discipline and row counts. The explorer
 // groups by discipline client-side; disciplines with no file still appear there, so
@@ -74,6 +105,47 @@ export function useDeleteTidp() {
       return data
     },
     onSuccess: () => invalidate(queryClient),
+  })
+}
+
+export function useSyncTidpFolder(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      manifest,
+      files,
+    }: {
+      manifest: TidpFolderManifest
+      files: Map<string, File>
+    }) => {
+      const body = new FormData()
+      body.append('manifest', JSON.stringify(manifest))
+
+      for (const [field, file] of files.entries()) {
+        body.append(field, file)
+      }
+
+      const { data } = await api.post<TidpFolderSyncResult>(
+        `/api/projects/${projectId}/tidp-folder/sync`,
+        body
+      )
+      return data
+    },
+    onSuccess: () => invalidate(queryClient),
+  })
+}
+
+export function useTidpFolderSyncStatus(projectId: string, syncId: string | null) {
+  return useQuery({
+    queryKey: ['tidp-folder-sync', projectId, syncId],
+    enabled: syncId !== null,
+    refetchInterval: syncId ? 500 : false,
+    queryFn: async () => {
+      const { data } = await api.get<TidpFolderSyncResult>(
+        `/api/projects/${projectId}/tidp-folder/syncs/${syncId}`
+      )
+      return data
+    },
   })
 }
 
