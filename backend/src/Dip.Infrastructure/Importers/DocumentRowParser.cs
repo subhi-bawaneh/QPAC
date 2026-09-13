@@ -43,8 +43,8 @@ internal static class DocumentRowParser
         var last = Math.Min(sheet.RowCount, 30);
         for (var r = 1; r <= last; r++)
         {
-            var value = sheet.Row(r).Cell(1).GetStringOrNull()?.Trim();
-            if (string.Equals(value, "DOCUMENT NUMBER", StringComparison.OrdinalIgnoreCase))
+            var value = sheet.Row(r).Cell(1).GetStringOrNull();
+            if (string.Equals(NormalizeHeader(value), "DOCUMENT NUMBER", StringComparison.OrdinalIgnoreCase))
             {
                 return r;
             }
@@ -95,12 +95,49 @@ internal static class DocumentRowParser
     private static int FindColumn(IExcelSheet sheet, int headerRow, string label)
     {
         var row = sheet.Row(headerRow);
+        var wanted = NormalizeHeader(label);
         for (var c = 1; c <= sheet.ColumnCount; c++)
         {
-            var value = row.Cell(c).GetStringOrNull()?.Trim();
-            if (string.Equals(value, label, StringComparison.OrdinalIgnoreCase)) return c;
+            var value = NormalizeHeader(row.Cell(c).GetStringOrNull());
+            if (string.Equals(value, wanted, StringComparison.OrdinalIgnoreCase)) return c;
         }
         return -1;
+    }
+
+    // A header is matched on its words, not on its layout. The TIDP template writes
+    // the two duration headers as "01-DURATION \n(DAYS)" — a line break inside the
+    // cell so the label wraps — and a plain Trim leaves that newline in the middle,
+    // where it never equals "01-DURATION (DAYS)". Every workbook in the project
+    // carries it, samples/TIDP-STL.xlsx included, so both duration columns have
+    // always mapped to -1 and no exchange duration has ever been read.
+    //
+    // Nothing computed changes today: those columns are empty in all 16,269 rows of
+    // the sample folder, so BudgetWeight was already correctly 1 everywhere
+    // (PLAN.md § 5.2 defaults it to the Exchange 01 duration, or 1). The match is
+    // fixed so that stays true because the data says so, not because the lookup
+    // silently failed. See docs/excel-analysis.md § 2a.
+    private static string NormalizeHeader(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return string.Empty;
+
+        var text = new System.Text.StringBuilder(value.Length);
+        var pendingSpace = false;
+        foreach (var ch in value)
+        {
+            // char.IsWhiteSpace covers the non-breaking space these sheets also use.
+            if (char.IsWhiteSpace(ch))
+            {
+                pendingSpace = text.Length > 0;
+                continue;
+            }
+            if (pendingSpace)
+            {
+                text.Append(' ');
+                pendingSpace = false;
+            }
+            text.Append(ch);
+        }
+        return text.ToString();
     }
 
     public static ParsedRow? ParseRow(IExcelSheet sheet, int r, DocumentColumnMap col, SerialWidths widths)

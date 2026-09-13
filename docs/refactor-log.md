@@ -706,3 +706,39 @@ copy of it. Three things it taught us, none of which were in PLAN.md:
 
 Verified against the checked-in folder: the first sync adds all 36 workbooks and none
 fails to parse; the second adds 0, updates 0, skips 36 and queues no batch at all.
+
+## R12 — The duration columns were never being read (2026-09-13)
+
+Found while comparing the nine `ARC`/`MEC`/`ELE`/`STR` workbooks that share a file
+name across `01.NAP`, `08. Provisional Sum` and `11. NAP PMO`.
+
+The TIDP template writes its two duration headers with a line break inside the cell —
+`01-DURATION \n(DAYS)` — so the label wraps over two lines. `DocumentRowParser`
+matched header labels with `Trim()`, which takes whitespace off the ends and leaves
+the newline in the middle, so neither column ever equalled `01-DURATION (DAYS)`. Both
+mapped to `-1`, and `ReadExchange`'s `duration > 0` guard turned a missing column into
+a null duration rather than into an error. Every workbook in the project carries the
+wrapped header, `samples/TIDP-STL.xlsx` included, so the test suite never noticed.
+
+**Nothing computed was wrong.** Both columns are empty in all 16,269 rows of
+`src/Dip.Api/02.TIDPs` and in the sample — the only non-blank cells are 74
+non-breaking spaces in one file — so `DataExchange.DurationDays` was correctly null
+and `BudgetWeight` correctly 1 everywhere (PLAN.md § 5.2 defaults it to the Exchange
+01 duration, or 1). `EvmSampleTests`' `OnlyContain(d => d.BudgetWeight == 1m)` still
+holds for the same reason it always did. This is a latent bug fixed before the data
+arrives, not a wrong number corrected.
+
+- `DocumentRowParser.FindColumn` and `FindDocumentTableHeader` now match on a header's
+  words rather than its layout: `NormalizeHeader` collapses internal whitespace runs
+  to a single space and trims. `char.IsWhiteSpace` covers the non-breaking space these
+  sheets also use.
+- `DocumentColumnMapTests` (new) opens `samples/TIDP-STL.xlsx` through `ClosedXmlReader`
+  and asserts all 34 columns are found, naming each — a column silently mapping to -1
+  is the failure it exists to catch — plus that the durations land on Z (26) and AF
+  (32). Both tests fail against the pre-fix matcher.
+- PLAN.md is unchanged: this was our lookup failing, not the Excel contradicting a rule.
+  Logged as findings 27–29 in `docs/excel-analysis.md`, along with two facts the same
+  comparison established — a shared file name means nothing about shared content (the
+  three ARC workbooks are fully disjoint; the only cross-workbook duplicates in the
+  whole folder are 331 identical ELE rows), and `08. Provisional Sum`'s ARC workbook
+  holds acoustic rows behind an unfilled `-XXX-` DOCUMENT REFERENCE.
