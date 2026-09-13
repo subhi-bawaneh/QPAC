@@ -24,10 +24,42 @@ internal sealed class TidpFileConfiguration : IEntityTypeConfiguration<TidpFile>
         b.Property(x => x.CreatedBy).HasMaxLength(100);
         b.Property(x => x.UpdatedBy).HasMaxLength(100);
         b.Property(x => x.RowVersion).IsConcurrencyToken();
+
+        // Folder identity — null for the one-file-at-a-time upload route.
+        b.Property(x => x.RelativePath).HasMaxLength(1000);
+        b.Property(x => x.ContentHash).HasMaxLength(64);
+        b.Property(x => x.FolderStatus).HasConversion<string>().HasMaxLength(20);
+        b.Property(x => x.LastModifiedUtc).HasColumnType("datetime2");
+        b.Property(x => x.LastSeenAt).HasColumnType("datetime2");
+        b.Property(x => x.MissingSince).HasColumnType("datetime2");
+        b.Property(x => x.NameProjectCode).HasMaxLength(20);
+        b.Property(x => x.NameOriginator).HasMaxLength(20);
+        b.Property(x => x.NameContract).HasMaxLength(20);
+        b.Property(x => x.NameDocType).HasMaxLength(20);
+        b.Property(x => x.DisciplineTag).HasMaxLength(10);
+        b.Property(x => x.NameZone).HasMaxLength(20);
+        b.Property(x => x.NameLevel).HasMaxLength(20);
+        b.Property(x => x.Sequence).HasMaxLength(20);
+
         b.HasIndex(x => new { x.ProjectId, x.DisciplineId });
         b.HasIndex(x => new { x.ProjectId, x.UploadedAt });
+        b.HasIndex(x => new { x.ProjectId, x.DisciplineTag });
+
+        // Filtered, because a single-file upload leaves RelativePath null and SQL
+        // Server treats two nulls as equal in a unique index — the second such upload
+        // would be rejected as a duplicate of the first.
+        b.HasIndex(x => new { x.ProjectId, x.RelativePath })
+            .IsUnique()
+            .HasFilter("[RelativePath] IS NOT NULL");
+
         b.HasOne(x => x.Project).WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
         b.HasOne(x => x.Discipline).WithMany().HasForeignKey(x => x.DisciplineId).OnDelete(DeleteBehavior.Restrict);
+
+        // Restrict on both: TidpFile already cascades from Project, and so do the two
+        // folder tables, so a cascade here would be a third path into this table.
+        b.HasOne(x => x.Owner).WithMany().HasForeignKey(x => x.OwnerId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne(x => x.FolderDiscipline).WithMany().HasForeignKey(x => x.FolderDisciplineId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }
 

@@ -25,8 +25,44 @@ public class TidpFile : AuditableEntity
     public TidpFileStatus Status { get; set; } = TidpFileStatus.Importing;
     public string? Error { get; set; }
 
+    // ------------------------------------------------------- folder identity
+    // Null for a file uploaded one at a time through /api/projects/{id}/tidp-files.
+    // A folder sync fills them in, and RelativePath is then the row's real key: the
+    // same FileName lives under three owners in the sample folder, so matching on the
+    // name alone would collapse three files into one.
+    public string? RelativePath { get; set; }
+    public Guid? OwnerId { get; set; }
+    public Guid? FolderDisciplineId { get; set; }
+
+    // The change detector, in the order it is applied: a differing timestamp or size
+    // sends the file to the hasher, and only a differing hash sends it to the importer.
+    // A workbook that was opened and saved without an edit is otherwise re-parsed —
+    // and a re-parse destroys the hand edits under it.
+    public DateTime? LastModifiedUtc { get; set; }
+    public long SizeBytes { get; set; }
+    public string? ContentHash { get; set; }                           // SHA-256, hex
+
+    public DateTime? LastSeenAt { get; set; }
+    public TidpFolderStatus FolderStatus { get; set; } = TidpFolderStatus.Present;
+    public DateTime? MissingSince { get; set; }
+
+    // The eight fields of the file's own name. The workbook is not a reliable source
+    // for these — most sample files carry the placeholder `...-TDP-XXX-00-000000-000001`
+    // in DOCUMENT REFERENCE — so the name is parsed and kept. Strings throughout:
+    // Zone "00", Level "000000" and Sequence "000001" all lose meaning as numbers.
+    public string? NameProjectCode { get; set; }
+    public string? NameOriginator { get; set; }
+    public string? NameContract { get; set; }
+    public string? NameDocType { get; set; }
+    public string? DisciplineTag { get; set; }                         // "ARC", "STL", "KNL"
+    public string? NameZone { get; set; }
+    public string? NameLevel { get; set; }
+    public string? Sequence { get; set; }                              // "000001", "19000"
+
     public Project? Project { get; set; }
     public Discipline? Discipline { get; set; }
+    public TidpFolderOwner? Owner { get; set; }
+    public TidpFolderDiscipline? FolderDiscipline { get; set; }
     public ICollection<Document> Documents { get; set; } = new List<Document>();
 }
 

@@ -20,6 +20,9 @@ public class DipDbContext
     public DbSet<DocumentTypeSerial> DocumentTypeSerials => Set<DocumentTypeSerial>();
     public DbSet<BaselineActivity> BaselineActivities => Set<BaselineActivity>();
     public DbSet<TidpFile> TidpFiles => Set<TidpFile>();
+    public DbSet<TidpFolderOwner> TidpFolderOwners => Set<TidpFolderOwner>();
+    public DbSet<TidpFolderDiscipline> TidpFolderDisciplines => Set<TidpFolderDiscipline>();
+    public DbSet<TidpFolderSync> TidpFolderSyncs => Set<TidpFolderSync>();
     public DbSet<Document> Documents => Set<Document>();
     public DbSet<DataExchange> DataExchanges => Set<DataExchange>();
     public DbSet<AconexRevision> AconexRevisions => Set<AconexRevision>();

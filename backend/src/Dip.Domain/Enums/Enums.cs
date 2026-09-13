@@ -83,3 +83,35 @@ public enum ImportBatchStatus
     Completed = 2,
     Failed = 3,
 }
+
+// What a level-1 folder under the TIDP root stands for. Read from the folder's own
+// name against the keywords in configuration, never from the workbooks inside it:
+// `06.Subcontractor - Unassigned` holds files whose header still says "Architectural".
+public enum TidpOwnerType
+{
+    Subcontractor = 0,  // a named trade contractor — NAP, JINGGONG, TKE …
+    Unassigned = 1,     // no subcontractor appointed yet; the folder has no owner name
+    ProvisionalSum = 2, // work carried as a provisional sum; likewise unowned
+}
+
+// Whether the last folder sync still found this row's path on disk. Separate from
+// TidpFileStatus, which says how the workbook's *import* went: a file can be
+// Imported and Missing at once (someone moved it out of the folder after it loaded).
+// A path that disappears is never deleted, only marked — it is usually a move.
+public enum TidpFolderStatus
+{
+    Present = 0,
+    Missing = 1,
+}
+
+// What one folder sync did with one path. Added/Updated queue an import; Skipped
+// touches LastSeenAt and nothing else; Missing is a stored path this upload did not
+// carry; Failed never reached the queue (bad name, unreadable workbook).
+public enum TidpSyncAction
+{
+    Added = 0,
+    Updated = 1,
+    Skipped = 2,
+    Missing = 3,
+    Failed = 4,
+}

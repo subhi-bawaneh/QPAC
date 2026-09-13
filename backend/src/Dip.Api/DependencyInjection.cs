@@ -176,6 +176,12 @@ public static class DependencyInjection
                     }));
         });
 
+        // The TIDP folder's own rules — which owner-folder keywords mean "unowned",
+        // which extensions are workbooks. Configuration rather than constants so a new
+        // unowned folder is a settings change, not a release.
+        services.Configure<Features.Tidps.TidpFolderOptions>(
+            configuration.GetSection(Features.Tidps.TidpFolderOptions.SectionName));
+
         services.AddScoped<IDispatcher, Dispatcher.Dispatcher>();
         services.AddScoped<ICurrentUser, CurrentUser>();
         services.AddScoped<Features.Recalculation.RecalculationService>();

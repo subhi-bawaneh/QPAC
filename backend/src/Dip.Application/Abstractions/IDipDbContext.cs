@@ -14,6 +14,9 @@ public interface IDipDbContext
     DbSet<DocumentTypeSerial> DocumentTypeSerials { get; }
     DbSet<BaselineActivity> BaselineActivities { get; }
     DbSet<TidpFile> TidpFiles { get; }
+    DbSet<TidpFolderOwner> TidpFolderOwners { get; }
+    DbSet<TidpFolderDiscipline> TidpFolderDisciplines { get; }
+    DbSet<TidpFolderSync> TidpFolderSyncs { get; }
     DbSet<Document> Documents { get; }
     DbSet<DataExchange> DataExchanges { get; }
     DbSet<AconexRevision> AconexRevisions { get; }

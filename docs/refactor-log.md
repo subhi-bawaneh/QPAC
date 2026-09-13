@@ -639,3 +639,70 @@ Infrastructure + 39 Api.IntegrationTests), the Infrastructure and Api.Integratio
 running against that container rather than skipping.
 
 New docs: `docs/decisions/004-sql-server.md`.
+
+## R11 — The TIDP folder is uploaded whole and synced incrementally (2026-09-12)
+
+Until now a TIDP arrived one workbook at a time and the database held nothing that
+could identify it again: `TidpFile` had a `FileName` and no path, no timestamp, no
+hash. Re-uploading the folder meant deciding by hand which of 36 files had changed.
+
+The folder itself is the specification, and `src/Dip.Api/02.TIDPs` is the reference
+copy of it. Three things it taught us, none of which were in PLAN.md:
+
+- **The workbook is not a reliable source for discipline or numbering.**
+  `06.Subcontractor - Unassigned/…-KNL-…xlsx` carries `DISCIPLINE = Architectural` in
+  its header, and most files carry the placeholder `…-TDP-XXX-00-000000-000001` in
+  DOCUMENT REFERENCE. The folder and the file name are, so they are what is parsed
+  and stored. The importer still reads the header for the corporate `Discipline` —
+  that is unchanged.
+- **Folder discipline codes are a different namespace from `Discipline.Code`.** The
+  folders use two letters (`AR`, `EL`, `FY`, `IN`), the corporate list three (`ARC`,
+  `ELE`, `FLS`, `INF`). They are separate tables, not one reused.
+- **The file name is not unique.**
+  `QF01012-NES-C04518-TDP-ARC-00-000000-000001.xlsx` appears three times in the
+  sample, under `01.NAP/AR-Architectural`, `08. Provisional Sum` and
+  `11. NAP PMO/AR-Architectural`. The key is the path relative to the root.
+
+### What was added
+
+- `Dip.Application/Documents/TidpPathParser.cs` — every folder and file-name rule as
+  pure string logic, no I/O, keyword lists injected as `TidpFolderRules` so
+  `appsettings.json` can extend them. 61 unit tests cover every shape in the sample.
+- `TidpFolderOwner`, `TidpFolderDiscipline`, `TidpFolderSync` entities, and
+  `TidpFile` extended with `RelativePath`, `ContentHash`, `LastModifiedUtc`,
+  `SizeBytes`, `LastSeenAt`, `FolderStatus`, `MissingSince`, the owner and discipline
+  folder keys, and the eight fields of its own name. Migration `TidpFolderSync`.
+- `POST /api/projects/{id}/tidp-folder/sync` — the whole folder as one multipart
+  request described by a `manifest` field. `GET …/tidp-folder/syncs/{syncId}` for the
+  outcome, `GET …/tidp-folder` for the tree.
+
+### Decisions worth recording
+
+- **Multipart, not a zip.** A browser's `webkitdirectory` already yields
+  `webkitRelativePath` and `lastModified`; a zip would need a packing library on the
+  client (rule 10) and its DOS timestamps round to two seconds, losing the precision
+  PLAN.md § 1 requires. Parts are named by a manifest rather than by position,
+  because position silently attaches one file's bytes to another file's path.
+- **No new worker kind.** The request does only hashing, comparing and upserting;
+  each changed file becomes an `ImportBatch` on the existing `WorkQueue` and is parsed
+  by `ImportService` exactly as a single-file upload is. So § 9 holds — no workbook is
+  opened on the request thread — and `ImportWorker`, `ImportService` and `TidpImporter`
+  are untouched.
+- **`FolderStatus`, not `Status`.** `TidpFile.Status` already means how the *import*
+  went (`Importing | Imported | Failed`). Presence in the folder is a second,
+  independent fact — a file can be `Imported` and `Missing` at once — so it is its own
+  column. The migration backfills existing rows to `Present`, not to EF's default
+  empty string, which would not read back as an enum value at all.
+- **A failed import is retried even when the file has not changed.** Otherwise a
+  workbook that broke once could never be re-imported without someone editing it.
+- **Nothing is deleted.** A path that stops appearing is marked `Missing` with a
+  timestamp; if its name and hash turn up elsewhere, both halves carry a move
+  suggestion. Acting on it is a person's decision.
+- **First-file-wins is unchanged.** The three copies of the same document numbers
+  still resolve to whichever file the importer reaches first, and the other two import
+  zero rows with a counted warning naming the owner. The sync reports `rowsImported`
+  per file so that is visible rather than silent; changing the ownership rule is a
+  much larger change than this one and was deliberately not made.
+
+Verified against the checked-in folder: the first sync adds all 36 workbooks and none
+fails to parse; the second adds 0, updates 0, skips 36 and queues no batch at all.
