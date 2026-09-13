@@ -1,19 +1,23 @@
-import { useMemo, useState } from 'react'
-import { ChevronRight, Upload } from 'lucide-react'
+import { useMemo, useState, useEffect } from 'react'
+import { Grid3x3, List, Menu, Upload } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
 import { Spinner } from '@/shared/ui/spinner'
 import { useAuth } from '@/shared/auth/useAuth'
 import { Permissions } from '@/shared/auth/permissions'
 import { QPAC_PROJECT_ID } from '@/shared/api/project'
 import { apiErrorMessage } from '@/shared/api/client'
-import { formatDate } from '@/shared/lib/utils'
 import { TidpFolderUploadDialog } from './TidpFolderUploadDialog'
 import { TidpFolderSyncResultView } from './TidpFolderSyncResult'
+import { TidpSidebar } from './TidpSidebar'
+import { TidpListView } from './TidpListView'
+import { TidpMobileDrawer } from './TidpMobileDrawer'
 import {
   useSyncTidpFolder, useTidpFolderSyncStatus, useTidpFolderTree,
-  type TidpOwnerDto, type TidpDisciplineFolderDto, type TidpFolderFileDto,
+  type TidpOwnerDto, type TidpDisciplineFolderDto,
 } from './api'
 import { buildManifestFromWebkitDirectory } from './manifestBuilder'
+
+const SIDEBAR_COLLAPSE_KEY = 'tidp-sidebar-collapsed'
 
 export function TidpExplorerPage() {
   const { can } = useAuth()
@@ -27,6 +31,26 @@ export function TidpExplorerPage() {
 
   // Navigation state: path of IDs to current node
   const [path, setPath] = useState<{ id: string; name: string; type: 'owner' | 'discipline' }[]>([])
+
+  // View mode state
+  const [isGridView, setIsGridView] = useState(true)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      const stored = localStorage.getItem(SIDEBAR_COLLAPSE_KEY)
+      return stored ? JSON.parse(stored) : false
+    } catch {
+      return false
+    }
+  })
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false)
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_COLLAPSE_KEY, JSON.stringify(sidebarCollapsed))
+    } catch {
+      // localStorage might be unavailable in some contexts
+    }
+  }, [sidebarCollapsed])
 
   // Get current node
   const currentNode = useMemo(() => {
@@ -117,33 +141,89 @@ export function TidpExplorerPage() {
     )
   }
 
+  const breadcrumb = path.map(p => p.name).join(' / ')
+
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-lg font-semibold">TIDP Folder Structure</h1>
-          {path.length > 0 && (
-            <div className="text-sm text-muted-foreground mt-1">
-              {path.map((p, i) => (
-                <span key={p.id}>
-                  {i > 0 && ' / '}
-                  <button
-                    onClick={() => setPath(path.slice(0, i))}
-                    className="hover:underline"
-                  >
-                    {p.name}
-                  </button>
-                </span>
-              ))}
+    <>
+      <TidpMobileDrawer
+        isOpen={mobileDrawerOpen}
+        onClose={() => setMobileDrawerOpen(false)}
+        data={folderTree.data}
+        onNavigate={(newPath) => {
+          setPath(newPath)
+          setMobileDrawerOpen(false)
+        }}
+      />
+
+      <div className="flex flex-col h-screen">
+      {/* Header */}
+      <div className="border-b border-border bg-card p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3 flex-1">
+            {/* Mobile menu button */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setMobileDrawerOpen(true)}
+              className="md:hidden p-1 h-auto"
+              title="Menu"
+            >
+              <Menu className="h-5 w-5" />
+            </Button>
+
+            <div>
+              <h1 className="text-lg font-semibold">TIDP Folder Structure</h1>
+              {path.length > 0 && (
+                <div className="text-sm text-muted-foreground mt-1">
+                  {path.map((p, i) => (
+                    <span key={p.id}>
+                      {i > 0 && ' / '}
+                      <button
+                        onClick={() => setPath(path.slice(0, i))}
+                        className="hover:underline"
+                      >
+                        {p.name}
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
+          </div>
+
+          <div className="flex gap-2">
+            {items.length > 0 && (
+              <>
+                <Button
+                  variant={isGridView ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setIsGridView(true)}
+                  title="Grid view"
+                >
+                  <Grid3x3 className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant={!isGridView ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setIsGridView(false)}
+                  title="List view"
+                >
+                  <List className="h-4 w-4" />
+                </Button>
+              </>
+            )}
+
+            {canUpload && (
+              <Button onClick={() => setShowFolderUpload(true)} disabled={syncFolder.isPending}>
+                <Upload className="h-4 w-4 mr-2" aria-hidden />
+                {syncFolder.isPending ? 'Uploading…' : 'Upload TIDPs Folder'}
+              </Button>
+            )}
+          </div>
         </div>
 
-        {canUpload && (
-          <Button onClick={() => setShowFolderUpload(true)} disabled={syncFolder.isPending}>
-            <Upload className="h-4 w-4 mr-2" aria-hidden />
-            {syncFolder.isPending ? 'Uploading…' : 'Upload TIDPs Folder'}
-          </Button>
+        {syncFolder.isError && (
+          <p className="text-sm text-destructive mt-3">{apiErrorMessage(syncFolder.error)}</p>
         )}
       </div>
 
@@ -154,110 +234,58 @@ export function TidpExplorerPage() {
         isLoading={syncFolder.isPending}
       />
 
-      {syncFolder.isError && (
-        <p className="text-sm text-destructive">{apiErrorMessage(syncFolder.error)}</p>
-      )}
+      {/* Content */}
+      <div className="flex-1 overflow-hidden flex">
+        {/* Sidebar on desktop */}
+        <div className="hidden md:flex md:flex-col">
+          <TidpSidebar
+            data={folderTree.data}
+            selectedPath={path}
+            onNavigate={setPath}
+            isCollapsed={sidebarCollapsed}
+            onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+          />
+        </div>
 
-      {items.length === 0 ? (
-        <div className="rounded-lg border border-border bg-card p-6 text-center">
-          <h3 className="font-semibold mb-2">
-            {path.length === 0 ? 'No TIDP folder uploaded yet' : 'No items in this folder'}
-          </h3>
-          <p className="text-sm text-muted-foreground mb-4">
-            {path.length === 0
-              ? 'Click "Upload TIDPs Folder" to sync your TIDP workbooks.'
-              : 'This folder contains no subfolders or files.'}
-          </p>
-          {path.length === 0 && canUpload && (
-            <Button onClick={() => setShowFolderUpload(true)}>
-              <Upload className="h-4 w-4 mr-2" aria-hidden />
-              Upload TIDPs Folder
-            </Button>
+        {/* Main content */}
+        <div className="flex-1 overflow-y-auto p-4">
+          {items.length === 0 ? (
+            <div className="rounded-lg border border-border bg-card p-6 text-center">
+              <h3 className="font-semibold mb-2">
+                {path.length === 0 ? 'No TIDP folder uploaded yet' : 'No items in this folder'}
+              </h3>
+              <p className="text-sm text-muted-foreground mb-4">
+                {path.length === 0
+                  ? 'Click "Upload TIDPs Folder" to sync your TIDP workbooks.'
+                  : 'This folder contains no subfolders or files.'}
+              </p>
+              {path.length === 0 && canUpload && (
+                <Button onClick={() => setShowFolderUpload(true)}>
+                  <Upload className="h-4 w-4 mr-2" aria-hidden />
+                  Upload TIDPs Folder
+                </Button>
+              )}
+            </div>
+          ) : (
+            <TidpListView
+              items={items}
+              breadcrumb={breadcrumb}
+              onItemClick={(item) => {
+                if ('ownerName' in item) {
+                  setPath([{ id: item.id, name: item.folderName, type: 'owner' }])
+                } else if ('disciplineCode' in item && !('ownerName' in item)) {
+                  setPath([
+                    ...path,
+                    { id: item.id, name: item.folderName, type: 'discipline' },
+                  ])
+                }
+              }}
+              isGridView={isGridView}
+            />
           )}
         </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
-          {items.map((item) => {
-            const isOwner = 'ownerName' in item
-            const isDiscipline = 'disciplineCode' in item && !('ownerName' in item)
-            const isFile = 'relativePath' in item && !('disciplines' in item) && !('disciplineCode' in item)
-
-            if (isOwner) {
-              const owner = item as TidpOwnerDto
-              return (
-                <button
-                  key={owner.id}
-                  onClick={() => setPath([{ id: owner.id, name: owner.folderName, type: 'owner' }])}
-                  className="rounded-lg border border-border bg-card p-4 hover:bg-accent text-left transition-colors"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-medium truncate">{owner.folderName}</h3>
-                      <p className="text-sm text-muted-foreground">
-                        {owner.disciplines.length + owner.files.length} items
-                      </p>
-                      {owner.ownerName && (
-                        <p className="text-xs text-muted-foreground mt-1">{owner.ownerName}</p>
-                      )}
-                    </div>
-                    <ChevronRight className="h-4 w-4 flex-shrink-0 mt-1" />
-                  </div>
-                </button>
-              )
-            }
-
-            if (isDiscipline) {
-              const discipline = item as TidpDisciplineFolderDto
-              return (
-                <button
-                  key={discipline.id}
-                  onClick={() =>
-                    setPath([
-                      ...path,
-                      { id: discipline.id, name: discipline.folderName, type: 'discipline' },
-                    ])
-                  }
-                  className="rounded-lg border border-border bg-card p-4 hover:bg-accent text-left transition-colors"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-medium truncate">{discipline.folderName}</h3>
-                      <p className="text-sm text-muted-foreground">
-                        {discipline.files.length} file{discipline.files.length !== 1 ? 's' : ''}
-                      </p>
-                    </div>
-                    <ChevronRight className="h-4 w-4 flex-shrink-0 mt-1" />
-                  </div>
-                </button>
-              )
-            }
-
-            if (isFile) {
-              const file = item as TidpFolderFileDto
-              return (
-                <div
-                  key={file.id}
-                  className={`rounded-lg border p-4 ${
-                    file.folderStatus === 'Missing' ? 'border-yellow-300 bg-yellow-50' : 'border-border bg-card'
-                  }`}
-                >
-                  <h3 className="font-medium truncate text-sm">{file.fileName}</h3>
-                  <div className="text-xs text-muted-foreground mt-2 space-y-1">
-                    {file.lastModifiedUtc && (
-                      <p>Modified: {formatDate(new Date(file.lastModifiedUtc))}</p>
-                    )}
-                    {file.status && <p>Status: {file.status}</p>}
-                    {file.rowsImported !== null && <p>Rows imported: {file.rowsImported}</p>}
-                    {file.folderStatus === 'Missing' && <p className="text-yellow-700">⚠ Missing</p>}
-                  </div>
-                </div>
-              )
-            }
-
-            return null
-          })}
-        </div>
-      )}
-    </div>
+      </div>
+      </div>
+    </>
   )
 }

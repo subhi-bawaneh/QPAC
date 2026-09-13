@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useLocation } from 'react-router-dom'
 import { ArrowLeft, Download } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
 import { Card } from '@/shared/ui/card'
@@ -19,6 +19,8 @@ import { useSaveRow, useWorkbook } from './api'
 
 export function WorkbookPage() {
   const { fileId = '' } = useParams()
+  const location = useLocation()
+  const breadcrumb = (location.state as { breadcrumb?: string } | null)?.breadcrumb
   const { can } = useAuth()
 
   const [sheet, setSheet] = useState('TIDP')
@@ -83,9 +85,9 @@ export function WorkbookPage() {
 
         <div className="flex gap-2">
           <Button variant="outline" size="sm" asChild>
-            <Link to="/tidps">
+            <Link to="/tidps" title={breadcrumb || undefined}>
               <ArrowLeft aria-hidden />
-              Back
+              {breadcrumb ? `← ${breadcrumb}` : 'Back'}
             </Link>
           </Button>
           <Button variant="outline" size="sm" onClick={() => void download()}>
