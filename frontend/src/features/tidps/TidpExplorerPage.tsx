@@ -1,104 +1,85 @@
-import { useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Upload } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { ChevronRight, Upload } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
 import { Spinner } from '@/shared/ui/spinner'
-import { ReplaceDialog } from '@/shared/ui/ReplaceDialog'
 import { useAuth } from '@/shared/auth/useAuth'
 import { Permissions } from '@/shared/auth/permissions'
 import { QPAC_PROJECT_ID } from '@/shared/api/project'
 import { apiErrorMessage } from '@/shared/api/client'
-import { formatDate, formatNumber } from '@/shared/lib/utils'
-import { Breadcrumb, type Crumb } from './Breadcrumb'
-import { DisciplineSidebar } from './DisciplineSidebar'
-import { IconGrid, type GridItem } from './IconGrid'
+import { formatDate } from '@/shared/lib/utils'
 import { TidpFolderUploadDialog } from './TidpFolderUploadDialog'
 import { TidpFolderSyncResultView } from './TidpFolderSyncResult'
 import {
-  useDeleteTidp, useDisciplines, useReplacePreview, useReplaceTidp, useTidpFiles, useSyncTidpFolder, useTidpFolderSyncStatus,
+  useSyncTidpFolder, useTidpFolderSyncStatus, useTidpFolderTree,
+  type TidpOwnerDto, type TidpDisciplineFolderDto, type TidpFolderFileDto,
 } from './api'
 import { buildManifestFromWebkitDirectory } from './manifestBuilder'
 
-// Two levels: disciplines, then the files inside one. There is no Drive root and no tree
-// of arbitrary depth any more, because there is no Drive — a TIDP belongs to a
-// discipline and that is the whole hierarchy.
 export function TidpExplorerPage() {
-  const navigate = useNavigate()
   const { can } = useAuth()
   const canUpload = can(Permissions.filesManage)
 
-  const disciplines = useDisciplines(QPAC_PROJECT_ID)
-  const files = useTidpFiles(QPAC_PROJECT_ID)
-  const replace = useReplaceTidp()
-  const remove = useDeleteTidp()
+  const folderTree = useTidpFolderTree(QPAC_PROJECT_ID)
   const syncFolder = useSyncTidpFolder(QPAC_PROJECT_ID)
   const [syncId, setSyncId] = useState<string | null>(null)
   const syncStatus = useTidpFolderSyncStatus(QPAC_PROJECT_ID, syncId)
-
-  const [disciplineId, setDisciplineId] = useState<string | null>(null)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [pending, setPending] = useState<{ id: string; action: 'replace' | 'delete' } | null>(null)
   const [showFolderUpload, setShowFolderUpload] = useState(false)
 
-  const preview = useReplacePreview(pending?.id ?? null)
-  const replacement = useRef<File | null>(null)
-  const replaceInput = useRef<HTMLInputElement>(null)
+  // Navigation state: path of IDs to current node
+  const [path, setPath] = useState<{ id: string; name: string; type: 'owner' | 'discipline' }[]>([])
 
-  const current = disciplines.data?.find((d) => d.id === disciplineId) ?? null
+  // Get current node
+  const currentNode = useMemo(() => {
+    if (path.length === 0) return null
 
-  const items: GridItem[] = useMemo(() => {
-    if (disciplineId === null) {
-      return (disciplines.data ?? []).map((discipline) => ({
-        id: discipline.id,
-        name: discipline.corporateName,
-        detail: `${formatNumber(discipline.fileCount)} ${discipline.fileCount === 1 ? 'file' : 'files'}`,
-        kind: 'folder' as const,
-      }))
+    let node: any = folderTree.data?.owners.find((o) => o.id === path[0].id)
+    if (!node) return null
+
+    for (let i = 1; i < path.length; i++) {
+      if ('disciplines' in node) {
+        node = node.disciplines.find((d: TidpDisciplineFolderDto) => d.id === path[i].id)
+      }
+      if (!node) return null
     }
 
-    return (files.data ?? [])
-      .filter((file) => file.disciplineId === disciplineId)
-      .map((file) => ({
-        id: file.id,
-        name: file.fileName,
-        detail: `${formatNumber(file.documentCount)} rows`,
-        secondary: formatDate(file.uploadedAt),
-        kind: 'file' as const,
-        state:
-          file.status === 'Failed' ? ('failed' as const)
-            : file.status === 'Importing' ? ('importing' as const)
-              : ('ok' as const),
-      }))
-  }, [disciplineId, disciplines.data, files.data])
+    return node
+  }, [path, folderTree.data])
 
-  const crumbs: Crumb[] = disciplineId === null
-    ? [{ id: null, label: 'TIDPs' }]
-    : [{ id: null, label: 'TIDPs' }, { id: disciplineId, label: current?.corporateName ?? '' }]
-
-  function open(id: string) {
-    if (disciplineId === null) {
-      setDisciplineId(id)
-      setSelectedId(null)
-    } else {
-      navigate(`/tidps/${id}`)
+  // Get items to display
+  const items = useMemo(() => {
+    if (path.length === 0) {
+      // Root: show all owners
+      return folderTree.data?.owners ?? []
     }
-  }
 
-  async function confirm() {
-    if (!pending) return
-    if (pending.action === 'delete') {
-      await remove.mutateAsync(pending.id)
-    } else if (replacement.current) {
-      await replace.mutateAsync({ tidpFileId: pending.id, file: replacement.current })
+    if (path.length === 1) {
+      // Inside owner: show disciplines + direct files
+      const owner = currentNode as TidpOwnerDto
+      if (!owner) return []
+
+      const items: any[] = [
+        ...(owner.disciplines ?? []),
+        ...(owner.files ?? []),
+      ]
+      return items
     }
-    replacement.current = null
-    setPending(null)
-  }
+
+    if (path.length === 2) {
+      // Inside discipline: show files
+      const discipline = currentNode as TidpDisciplineFolderDto
+      return discipline?.files ?? []
+    }
+
+    return []
+  }, [path, currentNode, folderTree.data])
+
+  const isSyncComplete = syncId && syncStatus.data
+    ? syncStatus.data.added + syncStatus.data.updated + syncStatus.data.skipped + syncStatus.data.missing + syncStatus.data.failed === syncStatus.data.totalFiles
+    : false
 
   async function handleFolderSelected(folderName: string, fileList: FileList) {
     try {
       const { manifest, files } = await buildManifestFromWebkitDirectory(fileList, folderName)
-
       if (manifest.files.length === 0) {
         throw new Error('No .xlsx or .xlsm files found')
       }
@@ -110,58 +91,60 @@ export function TidpExplorerPage() {
     }
   }
 
-  if (disciplines.isPending || files.isPending) return <Spinner />
+  if (folderTree.isPending) return <Spinner />
 
   // Show result view if sync is in progress or completed
-  if (syncId && syncStatus.data) {
-    const isSyncComplete = syncStatus.data.added + syncStatus.data.updated + syncStatus.data.skipped + syncStatus.data.missing + syncStatus.data.failed === syncStatus.data.totalFiles
+  if (syncId && syncStatus.data && isSyncComplete) {
     return (
       <div className="space-y-4">
-        <Breadcrumb
-          crumbs={crumbs}
-          onNavigate={(id) => {
-            setDisciplineId(id)
-            setSelectedId(null)
+        <TidpFolderSyncResultView
+          result={syncStatus.data}
+          onDone={() => {
+            setSyncId(null)
+            void folderTree.refetch()
           }}
         />
-        {isSyncComplete ? (
-          <TidpFolderSyncResultView
-            result={syncStatus.data}
-            onDone={() => {
-              setSyncId(null)
-              void disciplines.refetch()
-              void files.refetch()
-            }}
-          />
-        ) : (
-          <div className="text-center py-8">
-            <Spinner />
-            <p className="text-sm text-muted-foreground mt-2">Syncing folder...</p>
-          </div>
-        )}
       </div>
     )
   }
 
-  const hasAnyFile = (files.data?.length ?? 0) > 0
+  if (syncId && syncStatus.data && !isSyncComplete) {
+    return (
+      <div className="text-center py-8">
+        <Spinner />
+        <p className="text-sm text-muted-foreground mt-2">Syncing folder...</p>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Breadcrumb
-          crumbs={crumbs}
-          onNavigate={(id) => {
-            setDisciplineId(id)
-            setSelectedId(null)
-          }}
-        />
+        <div>
+          <h1 className="text-lg font-semibold">TIDP Folder Structure</h1>
+          {path.length > 0 && (
+            <div className="text-sm text-muted-foreground mt-1">
+              {path.map((p, i) => (
+                <span key={p.id}>
+                  {i > 0 && ' / '}
+                  <button
+                    onClick={() => setPath(path.slice(0, i))}
+                    className="hover:underline"
+                  >
+                    {p.name}
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
 
-        {canUpload ? (
+        {canUpload && (
           <Button onClick={() => setShowFolderUpload(true)} disabled={syncFolder.isPending}>
-            <Upload className="h-4 w-4" aria-hidden />
+            <Upload className="h-4 w-4 mr-2" aria-hidden />
             {syncFolder.isPending ? 'Uploading…' : 'Upload TIDPs Folder'}
           </Button>
-        ) : null}
+        )}
       </div>
 
       <TidpFolderUploadDialog
@@ -171,100 +154,110 @@ export function TidpExplorerPage() {
         isLoading={syncFolder.isPending}
       />
 
-      <input
-        ref={replaceInput}
-        type="file"
-        accept=".xlsx"
-        className="hidden"
-        onChange={(event) => {
-          const file = event.target.files?.[0]
-          if (file) replacement.current = file
-          event.target.value = ''
-        }}
-      />
-
-      {syncFolder.isError ? (
+      {syncFolder.isError && (
         <p className="text-sm text-destructive">{apiErrorMessage(syncFolder.error)}</p>
-      ) : null}
+      )}
 
-      {!hasAnyFile ? (
+      {items.length === 0 ? (
         <div className="rounded-lg border border-border bg-card p-6 text-center">
-          <h3 className="font-semibold mb-2">No TIDP folder uploaded yet</h3>
+          <h3 className="font-semibold mb-2">
+            {path.length === 0 ? 'No TIDP folder uploaded yet' : 'No items in this folder'}
+          </h3>
           <p className="text-sm text-muted-foreground mb-4">
-            Click the "Upload TIDPs Folder" button to sync your TIDP workbooks.
+            {path.length === 0
+              ? 'Click "Upload TIDPs Folder" to sync your TIDP workbooks.'
+              : 'This folder contains no subfolders or files.'}
           </p>
-          {canUpload && (
-            <Button onClick={() => setShowFolderUpload(true)} disabled={syncFolder.isPending}>
+          {path.length === 0 && canUpload && (
+            <Button onClick={() => setShowFolderUpload(true)}>
               <Upload className="h-4 w-4 mr-2" aria-hidden />
               Upload TIDPs Folder
             </Button>
           )}
         </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-[13rem_minmax(0,1fr)]">
-          <aside className="hidden md:block">
-            <DisciplineSidebar
-              disciplines={disciplines.data ?? []}
-              selectedId={disciplineId}
-              onSelect={(id) => {
-                setDisciplineId(id)
-                setSelectedId(null)
-              }}
-            />
-          </aside>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+          {items.map((item) => {
+            const isOwner = 'ownerName' in item
+            const isDiscipline = 'disciplineCode' in item && !('ownerName' in item)
+            const isFile = 'relativePath' in item && !('disciplines' in item) && !('disciplineCode' in item)
 
-          <section className="min-w-0 rounded-md border border-border bg-card">
-            <IconGrid
-              items={items}
-              selectedId={selectedId}
-              onSelect={setSelectedId}
-              onOpen={open}
-              emptyMessage={
-                disciplineId === null
-                  ? 'This project has no disciplines yet.'
-                  : 'No TIDP has been uploaded for this discipline.'
-              }
-            />
+            if (isOwner) {
+              const owner = item as TidpOwnerDto
+              return (
+                <button
+                  key={owner.id}
+                  onClick={() => setPath([{ id: owner.id, name: owner.folderName, type: 'owner' }])}
+                  className="rounded-lg border border-border bg-card p-4 hover:bg-accent text-left transition-colors"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-medium truncate">{owner.folderName}</h3>
+                      <p className="text-sm text-muted-foreground">
+                        {owner.disciplines.length + owner.files.length} items
+                      </p>
+                      {owner.ownerName && (
+                        <p className="text-xs text-muted-foreground mt-1">{owner.ownerName}</p>
+                      )}
+                    </div>
+                    <ChevronRight className="h-4 w-4 flex-shrink-0 mt-1" />
+                  </div>
+                </button>
+              )
+            }
 
-            {canUpload && disciplineId !== null && selectedId !== null ? (
-              <div className="flex gap-2 border-t border-border px-3 py-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setPending({ id: selectedId, action: 'replace' })
-                    replaceInput.current?.click()
-                  }}
+            if (isDiscipline) {
+              const discipline = item as TidpDisciplineFolderDto
+              return (
+                <button
+                  key={discipline.id}
+                  onClick={() =>
+                    setPath([
+                      ...path,
+                      { id: discipline.id, name: discipline.folderName, type: 'discipline' },
+                    ])
+                  }
+                  className="rounded-lg border border-border bg-card p-4 hover:bg-accent text-left transition-colors"
                 >
-                  Replace
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPending({ id: selectedId, action: 'delete' })}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-medium truncate">{discipline.folderName}</h3>
+                      <p className="text-sm text-muted-foreground">
+                        {discipline.files.length} file{discipline.files.length !== 1 ? 's' : ''}
+                      </p>
+                    </div>
+                    <ChevronRight className="h-4 w-4 flex-shrink-0 mt-1" />
+                  </div>
+                </button>
+              )
+            }
+
+            if (isFile) {
+              const file = item as TidpFolderFileDto
+              return (
+                <div
+                  key={file.id}
+                  className={`rounded-lg border p-4 ${
+                    file.folderStatus === 'Missing' ? 'border-yellow-300 bg-yellow-50' : 'border-border bg-card'
+                  }`}
                 >
-                  Delete
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => open(selectedId)}>
-                  Open
-                </Button>
-              </div>
-            ) : null}
-          </section>
+                  <h3 className="font-medium truncate text-sm">{file.fileName}</h3>
+                  <div className="text-xs text-muted-foreground mt-2 space-y-1">
+                    {file.lastModifiedUtc && (
+                      <p>Modified: {formatDate(new Date(file.lastModifiedUtc))}</p>
+                    )}
+                    {file.status && <p>Status: {file.status}</p>}
+                    {file.rowsImported !== null && <p>Rows imported: {file.rowsImported}</p>}
+                    {file.folderStatus === 'Missing' && <p className="text-yellow-700">⚠ Missing</p>}
+                  </div>
+                </div>
+              )
+            }
+
+            return null
+          })}
         </div>
       )}
-
-      <ReplaceDialog
-        open={pending !== null}
-        action={pending?.action ?? 'replace'}
-        preview={preview.data ?? null}
-        pending={replace.isPending || remove.isPending}
-        onCancel={() => {
-          replacement.current = null
-          setPending(null)
-        }}
-        onConfirm={confirm}
-      />
     </div>
   )
 }

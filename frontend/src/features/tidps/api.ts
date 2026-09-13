@@ -149,6 +149,65 @@ export function useTidpFolderSyncStatus(projectId: string, syncId: string | null
   })
 }
 
+export interface TidpFolderFileDto {
+  id: string
+  relativePath: string
+  fileName: string
+  disciplineTag?: string
+  sequence?: string
+  lastModifiedUtc?: string
+  folderStatus: string
+  missingSince?: string
+  status: string
+  error?: string
+  rowsImported?: number
+  rowsRead?: number
+}
+
+export interface TidpDisciplineFolderDto {
+  id: string
+  relativePath: string
+  folderName: string
+  disciplineCode: string
+  disciplineName: string
+  folderStatus: string
+  missingSince?: string
+  files: TidpFolderFileDto[]
+}
+
+export interface TidpOwnerDto {
+  id: string
+  relativePath: string
+  folderName: string
+  sortOrder?: number
+  ownerName?: string
+  ownerType: string
+  folderStatus: string
+  missingSince?: string
+  disciplines: TidpDisciplineFolderDto[]
+  files: TidpFolderFileDto[]
+}
+
+export interface TidpFolderTreeDto {
+  projectId: string
+  ownerCount: number
+  fileCount: number
+  missingCount: number
+  owners: TidpOwnerDto[]
+}
+
+export function useTidpFolderTree(projectId: string) {
+  return useQuery({
+    queryKey: ['tidp-folder-tree', projectId],
+    queryFn: async () => {
+      const { data } = await api.get<TidpFolderTreeDto>(
+        `/api/projects/${projectId}/tidp-folder`
+      )
+      return data
+    },
+  })
+}
+
 function invalidate(queryClient: ReturnType<typeof useQueryClient>) {
   for (const key of ['tidp-files', 'disciplines', 'imports', 'documents', 'tracker', 'summary', 'findings']) {
     void queryClient.invalidateQueries({ queryKey: [key] })
