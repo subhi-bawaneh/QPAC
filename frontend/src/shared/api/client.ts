@@ -8,13 +8,16 @@ export const apiBaseUrl = (import.meta.env.VITE_API_URL ?? 'http://localhost:500
 
 export const api = axios.create({
   baseURL: apiBaseUrl,
-  headers: { 'Content-Type': 'application/json' },
 })
 
 api.interceptors.request.use((config) => {
   const token = tokenStorage.getAccessToken()
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
+  }
+  // Set Content-Type only for non-FormData requests so FormData can set its own multipart boundary
+  if (!(config.data instanceof FormData)) {
+    config.headers['Content-Type'] ??= 'application/json'
   }
   return config
 })

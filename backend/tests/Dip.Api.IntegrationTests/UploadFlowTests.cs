@@ -45,6 +45,34 @@ public class UploadFlowTests
         (await db.Documents.CountAsync(d => d.TidpFileId == fileId)).Should().BeGreaterThan(50);
     }
 
+    [Fact]
+    public async Task Upload_RealTidpWorkbook_Returns202AndImportsSuccessfully()
+    {
+        if (!_factory.IsSqlServerAvailable) return;
+
+        var admin = await TestHelpers.AuthedAdminAsync(_factory);
+        var realFile = FindRealTidpFile();
+
+        File.Exists(realFile).Should().BeTrue($"Real TIDP file must exist at {realFile}");
+
+        var response = await PostRealFileAsync(
+            admin, $"/api/projects/{TestHelpers.QpacProjectId}/tidp-files", realFile);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Accepted,
+            "upload of real TIDP failed: {0}", await response.Content.ReadAsStringAsync());
+
+        var accepted = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var fileId = accepted.GetProperty("tidpFileId").GetGuid();
+        await WaitForBatchAsync(accepted.GetProperty("batchId").GetGuid());
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DipDbContext>();
+
+        var file = await db.TidpFiles.AsNoTracking().SingleAsync(t => t.Id == fileId);
+        file.Status.Should().Be(TidpFileStatus.Imported);
+        file.RowsRead.Should().BeGreaterThan(0);
+    }
+
     // The whole point of the edited-row count is that it is a number, not a warning
     // string: the operator is told how much hand-entered work a replace will destroy.
     [Fact]
@@ -223,6 +251,16 @@ public class UploadFlowTests
         return await client.PostAsync(url, multipart);
     }
 
+    private static async Task<HttpResponseMessage> PostRealFileAsync(
+        HttpClient client, string url, string filePath)
+    {
+        using var multipart = new MultipartFormDataContent();
+        var content = new ByteArrayContent(await File.ReadAllBytesAsync(filePath));
+        content.Headers.ContentType = new MediaTypeHeaderValue(Xlsx);
+        multipart.Add(content, "file", Path.GetFileName(filePath));
+        return await client.PostAsync(url, multipart);
+    }
+
     // The import runs in the worker; the flow tests poll the batch until it settles.
     private async Task WaitForBatchAsync(Guid batchId, int timeoutSeconds = 180)
     {
@@ -244,5 +282,19 @@ public class UploadFlowTests
         }
 
         throw new TimeoutException($"Batch {batchId} did not finish in {timeoutSeconds}s");
+    }
+
+    private static string FindRealTidpFile()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null)
+        {
+            var candidate = Path.Combine(
+                dir.FullName,
+                "src/Dip.Api/02.TIDPs/01.NAP/AR-Architectural/QF01012-NES-C04518-TDP-ARC-00-000000-000001.xlsx");
+            if (File.Exists(candidate)) return candidate;
+            dir = dir.Parent;
+        }
+        throw new FileNotFoundException("Cannot locate real TIDP file in 02.TIDPs folder");
     }
 }
